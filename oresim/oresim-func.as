@@ -1,6 +1,6 @@
 
 /**
- * 型
+ * 타입
  */
 var _style:Array = [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ];
 
@@ -748,7 +748,7 @@ function logOut() {
                     }
                     logtxt += i + " : "
                 }
-                logtxt += STATUS_NAME[gokuburiSt] + " 極振り " + gokuburiCnt + "up\r" + bonusXienTXT;
+                logtxt += STATUS_NAME[gokuburiSt] + " 몰빵 " + gokuburiCnt + "회\r" + bonusXienTXT;
             }
         }
         if(summry) {
@@ -858,7 +858,7 @@ function logOut() {
             }
             logtxt += i + " : "
         }
-        logtxt += STATUS_NAME[gokuburiSt] + " 極振り " + gokuburiCnt + "up\r";
+        logtxt += STATUS_NAME[gokuburiSt] + " 몰빵 " + gokuburiCnt + "회\r";
     }
     if(summry) {
 
@@ -931,7 +931,7 @@ function logOut() {
     });
 }
 function logLoad() {
-    var logorg:String = replaceText(replaceText(replaceText(logarea.text,"，",","),"：",":"),"－","-");
+    var logorg:String = replaceText(replaceText(replaceText(logarea.text,"\uFF0C",","),"\uFF1A",":"),"\uFF0D","-");
     var logtxt:Array = new Array();
     var line:Number = 0;
     var len:Number = 0;
@@ -1035,7 +1035,7 @@ function logLoad() {
                     if(token3[1] == STATUS_NAME[m]) {
                         st[stindex] = m;
                         
-                        if(token3.length > 2 && token3[2] == "極振り") {
+                        if(token3.length > 2 && token3[2] == "몰빵") {
                             for(var n:Number = startLv; n < endLv + 1; n++) {
                                 lvup();
                                 upPoints();
@@ -1125,53 +1125,53 @@ function logLoad() {
 function recipe() {
     var l:Array = log, sl:Array = stLog, rtxt:String = "", lis:Number = 0, lie:Number = 0,
         plis:Number = 0, renzoku:Boolean = false, st:Number = -1, len:Number = 0, bonusXien:String = "",
-        bonusXienFlag:Boolean = false, bonusLv:Number = 2;
+        bonusXienFlag:Boolean = false, bonusLv:Number = 2, opt:String = "";
     
-    rtxt = "■ステータス\r";
-    rtxt += "【キャラ】";
+    rtxt = "■스탯\r";
+    rtxt += "[캐릭터] ";
     rtxt += charCB.selectedItem.label;
-    rtxt += "\r【タイプ】";
+    rtxt += "\r[타입] ";
     rtxt += styleCB.selectedItem.label;
-    rtxt += "\r【 LV 　】 ";
+    rtxt += "\r[LV] ";
     rtxt += lv.value;
-    rtxt += "\r【STAB】 ";
+    rtxt += "\r[STAB] ";
     rtxt += s0.value;
-    rtxt += "\r【HACK】 ";
+    rtxt += "\r[HACK] ";
     rtxt += s1.value;
-    rtxt += "\r【 INT　】 ";
+    rtxt += "\r[INT] ";
     rtxt += s2.value;
-    rtxt += "\r【 DEF 】 ";
+    rtxt += "\r[DEF] ";
     rtxt += s3.value;
-    rtxt += "\r【 MR　】 ";
+    rtxt += "\r[MR] ";
     rtxt += s4.value;
-    rtxt += "\r【 DEX 】 ";
+    rtxt += "\r[DEX] ";
     rtxt += s5.value;
-    rtxt += "\r【 AGI　】 ";
+    rtxt += "\r[AGI] ";
     rtxt += s6.value;
-    rtxt += "\r【 H P　】 ";
+    rtxt += "\r[HP] ";
     rtxt += s7.value;
-    rtxt += "\r【 M P　】 ";
+    rtxt += "\r[MP] ";
     rtxt += s8.value;
-    rtxt += "\r【 S P　】 ";
+    rtxt += "\r[SP] ";
     rtxt += s9.value;
-    rtxt += "\r【WEIGHT】 ";
+    rtxt += "\r[WEIGHT] ";
     rtxt += s10.value;
-    rtxt += "\rボーナス ";
+    rtxt += "\r보너스 ";
     rtxt += pbonus.value;
     rtxt += "\r";
-    rtxt += "\r【 兜　】 ";
-    rtxt += "\r【武器】 ";
-    rtxt += "\r【 鎧　】 ";
-    rtxt += "\r【 盾　】 ";
-    rtxt += "\r【 頭　】 ";
-    rtxt += "\r【背中】 ";
-    rtxt += "\r【 手　】 ";
-    rtxt += "\r【 脚　】 ";
-    rtxt += "\r【ペット】 ";
-    rtxt += "\r【狩場 】 ";
+    rtxt += "\r[투구] ";
+    rtxt += "\r[무기] ";
+    rtxt += "\r[갑옷] ";
+    rtxt += "\r[방패] ";
+    rtxt += "\r[머리] ";
+    rtxt += "\r[몸] ";
+    rtxt += "\r[손] ";
+    rtxt += "\r[다리] ";
+    rtxt += "\r[펫] ";
+    rtxt += "\r[사냥터] ";
     rtxt += "\r";
     rtxt += "\r";
-    rtxt += "\r■再振りレシピ\r";
+    rtxt += "\r■재분배 순서\r";
     
     len = parseInt(lv.value);
     st = parseInt(String(sl[1]).substr(0,1));
@@ -1179,7 +1179,7 @@ function recipe() {
     var min:Number = 1;
     if(String(sl[l[0][0] - 1]).substr(0,1) == "s") {
         var a:Array = l[0];
-        rtxt += "開始ステータス{ " + l[0].join(", ") + " }\r";
+        rtxt += "시작 스탯 { " + l[0].join(", ") + " }\r";
         min = l[0][0] -1;
         st = parseInt(String(sl[min]).substr(1,1));
     }
@@ -1200,16 +1200,19 @@ function recipe() {
         //bonusXienFlag = false;
         if(lis == 1 || l[lis - 1][2] != l[plis - 1][2] || l[lis - 1][1] != l[plis - 1][1]) {
             bonusXienFlag = true;
-            bonusXien += "Lv " + l[lis][0] + " から ";
+            var bx:String = "";
             bonusLv = l[lis][0];
             
             if(lis == 1 || l[lis - 1][2] != l[plis - 1][2]) {
-                bonusXien += "ボーナス " + l[lis - 1][2] + "%"
+                bx += " 보너스 " + l[lis - 1][2] + "%";
             }
             if(lis == 1 || l[lis - 1][1] != l[plis - 1][1]) {
-                bonusXien += " " + XIEN_NAME[l[lis - 1][1]] + "先行"
+                if(bx != "") {
+                    bx += ",";
+                }
+                bx += " " + XIEN_NAME[l[lis - 1][1]] + " 주력";
             }
-            bonusXien += "\r";
+            bonusXien += "Lv " + l[lis][0] + "부터" + bx + "\r";
             
             if(lis == 1) {
                 rtxt += bonusXien;
@@ -1230,7 +1233,7 @@ function recipe() {
                 
                 rtxt += STATUS_NAME[st] + " " + l[lis + m][6 + st];
                 if(m == 0 && sll.substr(m,1) != String(st)) {
-                    rtxt += ", Lv  " + l[lis + m - 1][0];
+                    opt += ", Lv " + l[lis + m - 1][0];
                 }
                 if(Math.floor((l[lis + m][6 + st] * 5 + l[lis + m][0]) /125)
                    - Math.floor((l[lis + m - 1][6 + st] * 5 + l[lis + m - 1][0]) /125) > 0) {
@@ -1238,9 +1241,11 @@ function recipe() {
                     var num:Number = (DEFAULT_NEED_POINT[charCB.selectedIndex][styleCB.selectedIndex][st]
                                                + Math.floor((l[lis + m][6 + st] * 5 +l[lis + m][0]) /125));
                     
-                    rtxt += ", 必要Point " + num;
+                    opt += ", 필요 포인트 " + num;
                 }
-                rtxt += " まで " + STATUS_NAME[st] + " に振る\r" + bonusXien;
+                // Lv와 필요 포인트는 괄호로 묶어 뒤에 붙인다(opt 맨 앞의 ", "는 뗀다)
+                rtxt += "까지 찍기" + (opt == "" ? "" : " (" + opt.substr(2) + ")") + "\r" + bonusXien;
+                opt = "";
                 bonusXien = "";
                 bonusXienFlag = false;
             }
@@ -1265,7 +1270,7 @@ function recipe() {
         
         rtxt += STATUS_NAME[st] + " " + l[lis][6 + st];
         if(m == 0) {
-            rtxt += ", Lv  " + l[lis -1][0];
+            opt += ", Lv " + l[lis -1][0];
         }
         if(Math.floor((l[lis][6 + st] * 5 + l[lis][0]) /125)
            - Math.floor((l[lis - 1][6 + st] * 5 + l[lis - 1][0]) /125) > 0) {
@@ -1273,15 +1278,17 @@ function recipe() {
             var num:Number = (DEFAULT_NEED_POINT[charCB.selectedIndex][styleCB.selectedIndex][st]
                                        + Math.floor((l[lis][6 + st] * 5 +l[lis][0]) /125));
             
-            rtxt += ", 必要Point " + num;
+            opt += ", 필요 포인트 " + num;
         }
-        rtxt += " まで " + STATUS_NAME[st] + " に振る\r" + bonusXien;
+        // Lv와 필요 포인트는 괄호로 묶어 뒤에 붙인다(opt 맨 앞의 ", "는 뗀다)
+        rtxt += "까지 찍기" + (opt == "" ? "" : " (" + opt.substr(2) + ")") + "\r" + bonusXien;
+        opt = "";
 
     } else {
        rtxt += bonusXien;
 
     }
-    rtxt += "\r\r■再振りログ\r";
+    rtxt += "\r\r■재분배 로그\r";
     
     logOut();
     logarea.text = rtxt + logarea.text;

@@ -1,5 +1,5 @@
 /**
- * 型
+ * 타입
  */
  import flash.display.DisplayObject;
  import flash.display.Stage;
@@ -32,7 +32,7 @@ var so:SharedObject = SharedObject.getLocal("soundVolume");
 var st:SoundTransform = new SoundTransform();
 var tmpx:Number = 0;
 
-//初期化
+//초기화
 public function initApp(event):void  {
     
     changeChar(0);
@@ -288,7 +288,7 @@ public function commitStatusEditPress():void {
     updateStatus();
     logindex = -1;
     logging();
-    // 編集したレベルの印。戻る(←)で消えないよう log 側の文字数にも含める
+    // 편집한 레벨 표시. 되돌리기(←)로 지워지지 않도록 log 쪽 글자 수에도 넣는다
     stLog[parseInt(lv.text) - 1] = "s";
     tmpStLog[parseInt(lv.text) - 1] = "s";
     log[logindex][77] = 1;
@@ -299,7 +299,7 @@ public function commitStatusEditPress():void {
 
 public function statusEdit():void {
 
-    // 入力上限は最高レベル/ステカンスト値に合わせる
+    // 입력 상한은 최고 레벨/스탯 상한값에 맞춘다
     slv.maximum = MAX_LEVEL;
     ss0.maximum = MAX_STATUS[0];
     ss1.maximum = MAX_STATUS[1];
@@ -419,8 +419,8 @@ private function initXienList(c:Number):void  {
         }
     }
 }
-// Xien の値から各系統が先行するのに必要な Xien を求め直す(ステータス編集後など)
-// 同じ値なら後ろの系統が先行する(lvup と同じ扱い)
+// Xien 값으로 각 계열을 주력 계열로 고르는 데 필요한 Xien을 다시 구한다(스탯 편집 후 등)
+// 값이 같으면 번호가 큰 계열이 이긴다(lvup과 같은 규칙)
 private function updateNeedXien():void {
     var len:Number = _xi.length, lead:Number = 0;
 
@@ -438,7 +438,7 @@ private function updateNeedXien():void {
     }
     updateXienColor();
 }
-// 今のレベルで先行できない系統をドロップダウンで黒く表示する
+// 지금 레벨에서 고를 수 없는 계열을 드롭다운에서 검게 표시한다
 private function updateXienColor():void {
     var len:Number = xienList.length;
     var _color:Array = new Array();
@@ -623,10 +623,10 @@ private function initStatus(c:Number, s:Number, xi:Number):void  {
     logging();
     stLog[0] = "";
     tmpStLog[0] = "";
-    // 開始レベルが 1 でないキャラ(ロアミニ)の分
+    // 시작 레벨이 1이 아닌 캐릭터(로아미니)용
     stLog[parseInt(lv.text) - 1] = "";
     tmpStLog[parseInt(lv.text) - 1] = "";
-    // 必要ポイントをレベル込みで計算し直す(上の値は LV1 用の初期値)
+    // 필요 포인트를 레벨까지 반영해 다시 계산한다(위 값은 LV1 기준 초깃값)
     updateStatus();
 }
 
@@ -765,7 +765,7 @@ public function lvup():void {
     //s10mx.text = parseInt(s10mx.text ) + MAX_XIEN_UP_STATUS[xien][3];
     
     if ( tmpBonusExpected != bonusNS.value ) {
-        // LV ではなくレベルアップ回数で数える(LV1 開始なら同じ値。ロアミニ/ステータス編集後もずれない)
+        // LV가 아니라 레벨업 횟수로 센다(LV1 시작이면 같은 값이고, 로아미니나 스탯 편집 후에도 어긋나지 않는다)
         _bonusPoints = Math.floor((parseInt(tlvup.text) + 1) * bonusNS.value / 100);
     }
     var bonusExpected:Number = bonusNS.value;
@@ -909,7 +909,7 @@ public function dashBack():void {
         if(log[logindex][77] > 0 && String(tmpStLog[parseInt(log[logindex][0]) - 1]).substr(parseInt(log[logindex][77]) - 1,1) != tmp3) {
             break;
         }
-        // log[0] (開始/ステータス編集の状態) は振った操作ではないので見ない
+        // log[0](시작/스탯 편집 상태)은 스탯을 찍은 조작이 아니므로 보지 않는다
         if(logindex > 1 && log[logindex - 1][77] > 0 && Math.floor((parseInt(log[logindex - 1][0]) + parseInt(log[logindex - 1][6 + parseInt(tmp3)]) * 5) / 125) != tmp4) {
             break;
         }
@@ -1105,7 +1105,7 @@ private function setLog():void {
 		x[49] = l[75];
 		
         tmpBonusExpected = l[76];
-        // 先行に必要な Xien はログに無いので、戻した Xien から求め直す
+        // 계열별 주력 조건(_needXien)은 로그에 없으므로 되돌린 Xien으로 다시 구한다
         updateNeedXien();
 }
 
@@ -1137,7 +1137,7 @@ public function logOut():void {
         logtxt += "Status       : " + a.join(", ") + "\r";
         min = l[0][0];
 
-        // 編集したレベルで振った分も出力する
+        // 편집한 레벨에서 찍은 스탯도 출력한다
         while(lie < logindex && l[lie + 1][0] == min) {
             lie++;
         }
@@ -1167,7 +1167,7 @@ public function logOut():void {
         var plis:Number = lis;
         lie++;
         lis = lie;
-        // 戻る(←)で取り消した操作は含めない
+        // 되돌리기(←)로 취소한 조작은 넣지 않는다
         var len2:Number = logindex + 1;
 		try
 		{
@@ -1175,7 +1175,7 @@ public function logOut():void {
             lie++;
         }
         bonusXienTXT = "";
-        // 比べる前のレベルが無い最初の回は除く(ステータス編集が LV1 でも動くよう i != 1 ではなく plis で判定)
+        // 비교할 이전 레벨이 없는 첫 회는 건너뛴다(스탯 편집이 LV1이어도 되도록 i != 1 대신 plis로 판정)
         if(plis > 0 && l[lis][0] != 0 && l[lis - 1][2] != l[plis - 1][2]) {
             bonusXienTXT += "Bonus        : " + l[lis - 1][2] + "%\r";
         }
@@ -1233,7 +1233,7 @@ public function logOut():void {
                     }
                     logtxt += i + " : "
                 }
-                logtxt += STATUS_NAME[gokuburiSt] + " 極振り " + gokuburiCnt + "up\r" + bonusXienTXT;
+                logtxt += STATUS_NAME[gokuburiSt] + " 몰빵 " + gokuburiCnt + "회\r" + bonusXienTXT;
             }
         }
         if(summry) {
@@ -1343,7 +1343,7 @@ public function logOut():void {
             }
             logtxt += i + " : "
         }
-        logtxt += STATUS_NAME[gokuburiSt] + " 極振り " + gokuburiCnt + "up\r";
+        logtxt += STATUS_NAME[gokuburiSt] + " 몰빵 " + gokuburiCnt + "회\r";
     }
     if(summry) {
 
@@ -1417,7 +1417,7 @@ public function logOut():void {
     });
 }
 public function logLoad():void {
-    var logorg:String = replaceText(replaceText(replaceText(logarea.text,"，",","),"：",":"),"－","-");
+    var logorg:String = replaceText(replaceText(replaceText(logarea.text,"\uFF0C",","),"\uFF1A",":"),"\uFF0D","-");
     var logtxt:Array = new Array();
     var line:Number = 0;
     var len:Number = 0;
@@ -1478,9 +1478,9 @@ public function logLoad():void {
         }
     }
     if(charFound == false) {
-        // キャラ/型の行が無いときも、今のキャラ/型の初期状態から読み込む
+        // 캐릭터/타입 줄이 없어도 지금 캐릭터/타입의 초기 상태부터 읽는다
         for(var i:Number = 0; i < len; i++) {
-            // 読み込める行(LV n : ... / 項目数の合う Status)がある場合だけ
+            // 읽을 수 있는 줄(LV n : ... / 항목 수가 맞는 Status)이 있을 때만
             var tok0:Array = String(logtxt[i]).split(":");
             var tag0:Array = String(tok0[0]).split(" ");
             var nst:Number = replaceText(String(tok0[1]), " ", "").split(",").length;
@@ -1536,7 +1536,7 @@ public function logLoad():void {
                     if(token3[1] == STATUS_NAME[m]) {
                         st[stindex] = m;
                         
-                        if(token3.length > 2 && token3[2] == "極振り") {
+                        if(token3.length > 2 && token3[2] == "몰빵") {
                             for(var n:Number = startLv; n < endLv + 1; n++) {
                                 lvup();
                                 upPoints();
@@ -1574,7 +1574,7 @@ public function logLoad():void {
             }
             for(var l:Number = startLv; l < endLv + 1; l++) {
                 
-                // 開始レベル(LV1/ロアミニ/ステータス編集したレベル)ではレベルアップしない
+                // 시작 레벨(LV1/로아미니/스탯 편집한 레벨)에서는 레벨업하지 않는다
                 if( l != log[0][0]) {
                     lvup();
                 }
@@ -1595,12 +1595,13 @@ public function logLoad():void {
         }
         if(tag.split(" ")[0] == "Xien") {
 
-            var xa:Array = String(token[1]).split(" ");
-            var x:String = xa[1] + " " + xa[2];
+            // 이름에 띄어쓰기가 있어도 되도록 ':' 뒤 전체에서 앞뒤 공백만 떼고 비교한다.
+            // 이름 뒤에 공백을 두고 붙인 메모는 무시한다(일본어판 파서도 받던 형식)
+            var x:String = String(token[1]).replace(/^\s+|\s+$/g, "");
             var len:Number = XIEN_NAME.length;
             
             for(var l:Number = 0; l < len; l++) {
-                if(x == XIEN_NAME[l]) {
+                if(x == XIEN_NAME[l] || x.indexOf(XIEN_NAME[l] + " ") == 0) {
                     changeXien(l);
                 }
             }
@@ -1608,7 +1609,7 @@ public function logLoad():void {
         if(tag.split(" ")[0] == "Status") {
             
             var a:Array = replaceText(String(token[1])," ","").split(",");
-            // 78 項目: 現在の形式 / 46 項目: Xien が 20 系統だった頃の形式
+            // 78개: 현재 형식 / 46개: Xien이 20계열이던 시절의 형식
             if(a.length == 78 || a.length == 46) {
                 logindex = -1;
                 logging();
@@ -1638,66 +1639,66 @@ public function logLoad():void {
 public function recipe():void {
     var l:Array = log, sl:Array = stLog, rtxt:String = "", lis:Number = 0, lie:Number = 0,
         plis:Number = 0, renzoku:Boolean = false, st:Number = -1, len:Number = 0, bonusXien:String = "",
-        bonusXienFlag:Boolean = false, bonusLv:Number = 2;
+        bonusXienFlag:Boolean = false, bonusLv:Number = 2, opt:String = "";
     
-    rtxt = "■ステータス\r";
-    rtxt += "【キャラ】";
+    rtxt = "■스탯\r";
+    rtxt += "[캐릭터] ";
     rtxt += charCB.selectedItem.label;
-    rtxt += "\r【タイプ】";
+    rtxt += "\r[타입] ";
     rtxt += styleCB.selectedItem.label;
-    rtxt += "\r【 LV 　】 ";
+    rtxt += "\r[LV] ";
     rtxt += lv.text;
-    rtxt += "\r【STAB】 ";
+    rtxt += "\r[STAB] ";
     rtxt += s0.text;
-    rtxt += "\r【HACK】 ";
+    rtxt += "\r[HACK] ";
     rtxt += s1.text;
-    rtxt += "\r【 INT　】 ";
+    rtxt += "\r[INT] ";
     rtxt += s2.text;
-    rtxt += "\r【 DEF 】 ";
+    rtxt += "\r[DEF] ";
     rtxt += s3.text;
-    rtxt += "\r【 MR　】 ";
+    rtxt += "\r[MR] ";
     rtxt += s4.text;
-    rtxt += "\r【 DEX 】 ";
+    rtxt += "\r[DEX] ";
     rtxt += s5.text;
-    rtxt += "\r【 AGI　】 ";
+    rtxt += "\r[AGI] ";
     rtxt += s6.text;
-    rtxt += "\r【 H P　】 ";
+    rtxt += "\r[HP] ";
     rtxt += s7.text;
-    rtxt += "\r【 M P　】 ";
+    rtxt += "\r[MP] ";
     rtxt += s8.text;
-    rtxt += "\r【 S P　】 ";
+    rtxt += "\r[SP] ";
     rtxt += s9.text;
 	/*
-    rtxt += "\r【WEIGHT】 ";
+    rtxt += "\r[WEIGHT] ";
     rtxt += s10.text;/* */
-    rtxt += "\rボーナス ";
+    rtxt += "\r보너스 ";
     rtxt += pbonus.text;
     rtxt += "\r";
-    rtxt += "\r【 兜　】 ";
-    rtxt += "\r【武器】 ";
-    rtxt += "\r【 鎧　】 ";
-    rtxt += "\r【 盾　】 ";
-    rtxt += "\r【 頭　】 ";
-    rtxt += "\r【背中】 ";
-    rtxt += "\r【 手　】 ";
-    rtxt += "\r【 脚　】 ";
-    rtxt += "\r【ペット】 ";
-    rtxt += "\r【狩場 】 ";
+    rtxt += "\r[투구] ";
+    rtxt += "\r[무기] ";
+    rtxt += "\r[갑옷] ";
+    rtxt += "\r[방패] ";
+    rtxt += "\r[머리] ";
+    rtxt += "\r[몸] ";
+    rtxt += "\r[손] ";
+    rtxt += "\r[다리] ";
+    rtxt += "\r[펫] ";
+    rtxt += "\r[사냥터] ";
     rtxt += "\r";
     rtxt += "\r";
-    rtxt += "\r■再振りレシピ\r";
+    rtxt += "\r■재분배 순서\r";
     
     len = parseInt(lv.text);
 
-    // 開始レベル(LV1、ロアミニは LV200)の次のレベルから読む
+    // 시작 레벨(LV1, 로아미니는 LV200)의 다음 레벨부터 읽는다
     var min:Number = l[0][0];
     st = parseInt(String(sl[min]).substr(0,1));
     if(String(sl[l[0][0] - 1]).substr(0,1) == "s") {
         var a:Array = l[0];
-        rtxt += "開始ステータス{ " + l[0].join(", ") + " }\r";
+        rtxt += "시작 스탯 { " + l[0].join(", ") + " }\r";
         min = l[0][0] -1;
         st = parseInt(String(sl[min]).substr(1,1));
-        // 編集したレベルで振っていなければ、通常と同じく次のレベルから読む
+        // 편집한 레벨에서 찍지 않았으면 평소처럼 다음 레벨부터 읽는다
         if(String(sl[min]).length < 2) {
             min = l[0][0];
             st = parseInt(String(sl[min]).substr(0,1));
@@ -1720,16 +1721,19 @@ public function recipe():void {
         //bonusXienFlag = false;
         if(lis == 1 || l[lis - 1][2] != l[plis - 1][2] || l[lis - 1][1] != l[plis - 1][1]) {
             bonusXienFlag = true;
-            bonusXien += "Lv " + l[lis][0] + " から ";
+            var bx:String = "";
             bonusLv = l[lis][0];
             
             if(lis == 1 || l[lis - 1][2] != l[plis - 1][2]) {
-                bonusXien += "ボーナス " + l[lis - 1][2] + "%"
+                bx += " 보너스 " + l[lis - 1][2] + "%";
             }
             if(lis == 1 || l[lis - 1][1] != l[plis - 1][1]) {
-                bonusXien += " " + XIEN_NAME[l[lis - 1][1]] + "先行"
+                if(bx != "") {
+                    bx += ",";
+                }
+                bx += " " + XIEN_NAME[l[lis - 1][1]] + " 주력";
             }
-            bonusXien += "\r";
+            bonusXien += "Lv " + l[lis][0] + "부터" + bx + "\r";
             
             if(lis == 1) {
                 rtxt += bonusXien;
@@ -1739,7 +1743,7 @@ public function recipe():void {
         }
         var sll:String = replaceText( String(sl[i]), "s", "");
         var len2:Number = sll.length;
-        // ステータス編集したレベルは先頭にレベルアップのログが無いので、1 つ前のログと比べる
+        // 스탯 편집한 레벨은 맨 앞에 레벨업 로그가 없으므로 하나 앞의 로그와 비교한다
         var adj:Number = 0;
         if(i == l[0][0] - 1) {
             adj = 1;
@@ -1759,7 +1763,7 @@ public function recipe():void {
                 }
                 rtxt += STATUS_NAME[st] + " " + l[lis + m - lvupFlag][6 + st];
                 if(m == 0 && sll.substr(m,1) != String(st)) {
-                    rtxt += ", Lv  " + l[lis + m - 1][0];
+                    opt += ", Lv " + l[lis + m - 1][0];
                 }
                 if(Math.floor((l[lis + m - adj][6 + st] * 5 + l[lis + m - adj][0]) /125)
                    - Math.floor((l[lis + m - 1 - adj - lvupFlag][6 + st] * 5 + l[lis + m - 1 - adj - lvupFlag][0]) /125) > 0) {
@@ -1767,9 +1771,11 @@ public function recipe():void {
                     var num:Number = (DEFAULT_NEED_POINT[charCB.selectedIndex][styleCB.selectedIndex][st]
                                                + Math.floor((l[lis + m - adj][6 + st] * 5 +l[lis + m - adj][0]) /125));
                     
-                    rtxt += ", 必要Point " + num;
+                    opt += ", 필요 포인트 " + num;
                 }
-                rtxt += " まで " + STATUS_NAME[st] + " に振る\r" + bonusXien;
+                // Lv와 필요 포인트는 괄호로 묶어 뒤에 붙인다(opt 맨 앞의 ", "는 뗀다)
+                rtxt += "까지 찍기" + (opt == "" ? "" : " (" + opt.substr(2) + ")") + "\r" + bonusXien;
+                opt = "";
                 bonusXien = "";
                 bonusXienFlag = false;
             }
@@ -1777,7 +1783,7 @@ public function recipe():void {
         }
     }
     
-    // 最後のログは今の状態(戻る(←)で取り消した操作は含めない)
+    // 마지막 로그는 지금 상태다(되돌리기(←)로 취소한 조작은 넣지 않는다)
     lis = logindex + 1;
     if(bonusXienFlag && bonusLv <= l[lis - 1][0]) {
        rtxt += bonusXien;
@@ -1793,7 +1799,7 @@ public function recipe():void {
         rtxt += STATUS_NAME[st] + " " + l[lis - 1][6 + st];
         if((DEFAULT_NEED_POINT[charCB.selectedIndex][styleCB.selectedIndex][st]
                                        + Math.floor((l[lis - 1][6 + st] * 5 +l[lis - 1][0]) /125)) > l[lis - 1 - lvupFlag][17]) {
-            rtxt += ", Lv  " + l[lis - 1 - lvupFlag][0];
+            opt += ", Lv " + l[lis - 1 - lvupFlag][0];
         }
         if(Math.floor((l[lis - 1][6 + st] * 5 + l[lis - 1][0]) /125)
            - Math.floor((l[lis - 2 - lvupFlag][6 + st] * 5 + l[lis - 2 - lvupFlag][0]) /125) > 0) {
@@ -1801,15 +1807,17 @@ public function recipe():void {
             var num:Number = (DEFAULT_NEED_POINT[charCB.selectedIndex][styleCB.selectedIndex][st]
                                        + Math.floor((l[lis - 1][6 + st] * 5 +l[lis - 1][0]) /125));
             
-            rtxt += ", 必要Point " + num;
+            opt += ", 필요 포인트 " + num;
         }
-        rtxt += " まで " + STATUS_NAME[st] + " に振る\r" + bonusXien;
+        // Lv와 필요 포인트는 괄호로 묶어 뒤에 붙인다(opt 맨 앞의 ", "는 뗀다)
+        rtxt += "까지 찍기" + (opt == "" ? "" : " (" + opt.substr(2) + ")") + "\r" + bonusXien;
+        opt = "";
 
     } else {
        rtxt += bonusXien;
 
     }
-    rtxt += "\r\r■再振りログ\r";
+    rtxt += "\r\r■재분배 로그\r";
     
     logOut();
     logarea.text = rtxt + logarea.text;
