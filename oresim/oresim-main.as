@@ -153,6 +153,7 @@ public function lvupPress() {
     application.setFocus();
 }
 public function stupPress(n:Number):void {
+    var sArray:Array = [s0,s1,s2,s3,s4,s5,s6];
     var pArray:Array = [p0,p1,p2,p3,p4,p5,p6]; 
     
     if(_shiftKeyDown) {
@@ -160,7 +161,8 @@ public function stupPress(n:Number):void {
         return;
     }
 
-    if(parseInt(s11.text) >= parseInt((pArray[n] as Text).text)) {
+    if(parseInt((sArray[n] as Text).text) < MAX_STATUS[n]
+       && parseInt(s11.text) >= parseInt((pArray[n] as Text).text)) {
 
         stupSe.sound.play(0,0,st);
         stup(n);
@@ -267,27 +269,48 @@ public function commitStatusEditPress():void {
     //s10mx.text = String(ss10.value);
     //s10mi.text = String(ss10.value);
     
-    var len:Number = xienList.length, x:Array = _xi, max:Number = 0, maxIndex:Number = 0;
+    var len:Number = xienList.length, x:Array = _xi, max:Number = 0, maxIndex:Number = 0, v:Number;
         
     for(var i:Number = 0; i < len; i++) {
-        x[parseInt(xienList.getItemAt(i).data)] = parseInt(sxiList.getItemAt(i).xienData);
-        if(sxiList.getItemAt(i).xienData >= max) {
-            max = sxiList.getItemAt(i).xienData;
+        v = parseInt(sxiList.getItemAt(i).xienData);
+        if(isNaN(v) || v < 0) {
+            v = 0;
+        }
+        x[parseInt(xienList.getItemAt(i).data)] = v;
+        if(v >= max) {
+            max = v;
             maxIndex = i;
         }
     }
     xienCB.selectedIndex = maxIndex;
+    updateNeedXien();
     
     updateStatus();
     logindex = -1;
     logging();
+    // 編集したレベルの印。戻る(←)で消えないよう log 側の文字数にも含める
     stLog[parseInt(lv.text) - 1] = "s";
+    tmpStLog[parseInt(lv.text) - 1] = "s";
+    log[logindex][77] = 1;
 
     w.visible = false;
     application.setFocus();
 }
 
 public function statusEdit():void {
+
+    // 入力上限は最高レベル/ステカンスト値に合わせる
+    slv.maximum = MAX_LEVEL;
+    ss0.maximum = MAX_STATUS[0];
+    ss1.maximum = MAX_STATUS[1];
+    ss2.maximum = MAX_STATUS[2];
+    ss3.maximum = MAX_STATUS[3];
+    ss4.maximum = MAX_STATUS[4];
+    ss5.maximum = MAX_STATUS[5];
+    ss6.maximum = MAX_STATUS[6];
+    ss7.maximum = MAX_STATUS[7];
+    ss8.maximum = MAX_STATUS[8];
+    ss9.maximum = MAX_STATUS[9];
 
     slv.value = parseInt(lv.text);
     ss0.value = parseInt(s0.text);
@@ -395,6 +418,46 @@ private function initXienList(c:Number):void  {
             xienList.addItem({label:XIEN_NAME[i], data:i});
         }
     }
+}
+// Xien の値から各系統が先行するのに必要な Xien を求め直す(ステータス編集後など)
+// 同じ値なら後ろの系統が先行する(lvup と同じ扱い)
+private function updateNeedXien():void {
+    var len:Number = _xi.length, lead:Number = 0;
+
+    for(var i:Number = 0; i < len; i++) {
+        if(_xi[i] >= _xi[lead]) {
+            lead = i;
+        }
+    }
+    for(var i:Number = 0; i < len; i++) {
+        if(i < lead) {
+            _needXien[i] = _xi[lead] + 1;
+        } else {
+            _needXien[i] = _xi[lead];
+        }
+    }
+    updateXienColor();
+}
+// 今のレベルで先行できない系統をドロップダウンで黒く表示する
+private function updateXienColor():void {
+    var len:Number = xienList.length;
+    var _color:Array = new Array();
+    var c:Number = charCB.selectedIndex;
+    var l:Number;
+
+    for(var i:Number = 0; i < len; i++) {
+        l =  parseInt(lv.text);
+        if(MAX_XIEN[c][xienList.getItemAt(i).data].length < l) {
+            l = MAX_XIEN[c][xienList.getItemAt(i).data].length;
+        }
+        if(MAX_XIEN[c][xienList.getItemAt(i).data][l - 1] < _needXien[xienList.getItemAt(i).data]) {
+            _color.push(0x000000);
+
+        } else {
+            _color.push(0x363636);
+        }
+    }
+    xienCB.setStyle("alternatingItemColors", _color);
 }
 private function initStatus(c:Number, s:Number, xi:Number):void  {
     
@@ -560,6 +623,11 @@ private function initStatus(c:Number, s:Number, xi:Number):void  {
     logging();
     stLog[0] = "";
     tmpStLog[0] = "";
+    // 開始レベルが 1 でないキャラ(ロアミニ)の分
+    stLog[parseInt(lv.text) - 1] = "";
+    tmpStLog[parseInt(lv.text) - 1] = "";
+    // 必要ポイントをレベル込みで計算し直す(上の値は LV1 用の初期値)
+    updateStatus();
 }
 
 public function updateStatus():void {
@@ -671,25 +739,7 @@ public function lvup():void {
         _needXien[i] = max;
     }
     _xi[xien] = max;
-      
-      len = xienList.length;
-      var _color:Array = new Array();
-      var c:Number = charCB.selectedIndex;
-      var l:Number;
-      
-      for(var i:Number = 0; i < len; i++) {
-          l =  parseInt(lv.text);
-          if(MAX_XIEN[c][xienList.getItemAt(i).data].length < l) {
-                l = MAX_XIEN[c][xienList.getItemAt(i).data].length;
-          }
-          if(MAX_XIEN[c][xienList.getItemAt(i).data][l - 1] < _needXien[xienList.getItemAt(i).data]) {
-              _color.push(0x000000);
-
-          } else {
-              _color.push(0x363636);
-          }
-      }
-      xienCB.setStyle("alternatingItemColors", _color);
+    updateXienColor();
     
     s0.text = parseInt(s0.text ) + XIEN_UP_BONUS[xien][0];
     s1.text = parseInt(s1.text ) + XIEN_UP_BONUS[xien][1];
@@ -715,7 +765,8 @@ public function lvup():void {
     //s10mx.text = parseInt(s10mx.text ) + MAX_XIEN_UP_STATUS[xien][3];
     
     if ( tmpBonusExpected != bonusNS.value ) {
-        _bonusPoints = Math.floor((parseInt(lv.text) - 1) * bonusNS.value / 100);
+        // LV ではなくレベルアップ回数で数える(LV1 開始なら同じ値。ロアミニ/ステータス編集後もずれない)
+        _bonusPoints = Math.floor((parseInt(tlvup.text) + 1) * bonusNS.value / 100);
     }
     var bonusExpected:Number = bonusNS.value;
     tlvup.text = String(parseInt(tlvup.text) + 1);
@@ -758,7 +809,8 @@ public function stup(s:Number):void {
     var sArray:Array = [s0,s1,s2,s3,s4,s5,s6,s7,s8,s9,0,s11]; 
     var pArray:Array = [p0,p1,p2,p3,p4,p5,p6]; 
     
-    if(parseInt((pArray[s] as Text).text) > parseInt(s11.text)) {
+    if(parseInt((pArray[s] as Text).text) > parseInt(s11.text)
+       || parseInt((sArray[s] as Text).text) >= MAX_STATUS[s]) {
         return;
     }
     
@@ -857,7 +909,8 @@ public function dashBack():void {
         if(log[logindex][77] > 0 && String(tmpStLog[parseInt(log[logindex][0]) - 1]).substr(parseInt(log[logindex][77]) - 1,1) != tmp3) {
             break;
         }
-        if(log[logindex - 1][77] > 0 && Math.floor((parseInt(log[logindex - 1][0]) + parseInt(log[logindex - 1][6 + parseInt(tmp3)]) * 5) / 125) != tmp4) {
+        // log[0] (開始/ステータス編集の状態) は振った操作ではないので見ない
+        if(logindex > 1 && log[logindex - 1][77] > 0 && Math.floor((parseInt(log[logindex - 1][0]) + parseInt(log[logindex - 1][6 + parseInt(tmp3)]) * 5) / 125) != tmp4) {
             break;
         }
     }
@@ -1052,6 +1105,8 @@ private function setLog():void {
 		x[49] = l[75];
 		
         tmpBonusExpected = l[76];
+        // 先行に必要な Xien はログに無いので、戻した Xien から求め直す
+        updateNeedXien();
 }
 
 public function logOut():void {
@@ -1081,6 +1136,17 @@ public function logOut():void {
         var a:Array= l[0];
         logtxt += "Status       : " + a.join(", ") + "\r";
         min = l[0][0];
+
+        // 編集したレベルで振った分も出力する
+        while(lie < logindex && l[lie + 1][0] == min) {
+            lie++;
+        }
+        lis = 1;
+        if(String(sl[min - 1]).length > 1) {
+            summry = true;
+            pattern = sl[min - 1];
+            startLv = min;
+        }
     } else
     if(sl[0] == undefined || String(sl[0]).length == 0) {
         logtxt += "LV ";
@@ -1101,17 +1167,19 @@ public function logOut():void {
         var plis:Number = lis;
         lie++;
         lis = lie;
-        var len2:Number = l.length;
+        // 戻る(←)で取り消した操作は含めない
+        var len2:Number = logindex + 1;
 		try
 		{
         while(len2 > lie + 1 && l[lie + 1][0] == i  + 1) {
             lie++;
         }
         bonusXienTXT = "";
-        if(i != 1 && l[lis][0] != 0 && l[lis - 1][2] != l[plis - 1][2]) {
+        // 比べる前のレベルが無い最初の回は除く(ステータス編集が LV1 でも動くよう i != 1 ではなく plis で判定)
+        if(plis > 0 && l[lis][0] != 0 && l[lis - 1][2] != l[plis - 1][2]) {
             bonusXienTXT += "Bonus        : " + l[lis - 1][2] + "%\r";
         }
-        if(i != 1  && l[lis][0] != 0 && l[lis - 1][1] != l[plis - 1][1]) {
+        if(plis > 0 && l[lis][0] != 0 && l[lis - 1][1] != l[plis - 1][1]) {
             bonusXienTXT += "Xien         : " + XIEN_NAME[l[lis - 1][1]] + "\r";
         }/* */
 		}catch(e:Error)
@@ -1377,6 +1445,7 @@ public function logLoad():void {
     
     len = logtxt.length;
     var len2:Number = charName.length;
+    var charFound:Boolean = false;
     for(var i:Number = 0; i < len; i++) {
         var str:String = replaceText(logtxt[i], " ","");
         var token:Array = str.split("/");
@@ -1386,6 +1455,7 @@ public function logLoad():void {
             
             if(String(token[0]) == charName[l]) {
                 changeChar(l);
+                charFound = true;
                 
                 if(String(token[1]).substr(0,String(STYLE_NAME[l][0]).length) == STYLE_NAME[l][0]) {
                     changeStyle(0);
@@ -1403,6 +1473,20 @@ public function logLoad():void {
                     break;
                 }
                 i = logtxt.length;
+                break;
+            }
+        }
+    }
+    if(charFound == false) {
+        // キャラ/型の行が無いときも、今のキャラ/型の初期状態から読み込む
+        for(var i:Number = 0; i < len; i++) {
+            // 読み込める行(LV n : ... / 項目数の合う Status)がある場合だけ
+            var tok0:Array = String(logtxt[i]).split(":");
+            var tag0:Array = String(tok0[0]).split(" ");
+            var nst:Number = replaceText(String(tok0[1]), " ", "").split(",").length;
+            if((tok0.length > 1 && tag0[0] == "LV" && isNaN(parseInt(tag0[1])) == false)
+               || (tag0[0] == "Status" && (nst == 78 || nst == 46))) {
+                reset();
                 break;
             }
         }
@@ -1490,10 +1574,7 @@ public function logLoad():void {
             }
             for(var l:Number = startLv; l < endLv + 1; l++) {
                 
-                if( l == 1) {
-                    continue;
-                }
-                
+                // 開始レベル(LV1/ロアミニ/ステータス編集したレベル)ではレベルアップしない
                 if( l != log[0][0]) {
                     lvup();
                 }
@@ -1527,15 +1608,27 @@ public function logLoad():void {
         if(tag.split(" ")[0] == "Status") {
             
             var a:Array = replaceText(String(token[1])," ","").split(",");
-            if(a.length == 46) {
-                logindex = 0;
-                var len:Number = a.length;
+            // 78 項目: 現在の形式 / 46 項目: Xien が 20 系統だった頃の形式
+            if(a.length == 78 || a.length == 46) {
+                logindex = -1;
+                logging();
                 var la:Array = log[logindex];
+                var len:Number = la.length;
                 for(var l = 0; l < len; l++ ) {
-                    la[l] = parseInt(a[l]);
+                    if(l < a.length) {
+                        la[l] = parseInt(a[l]);
+                    } else {
+                        la[l] = 0;
+                    }
                 }
-                stLog[a[0] - 1] = "s";
-                tmpStLog[a[0] - 1] = "s";
+                if(a.length == 46) {
+                    la[76] = la[2];
+                }
+                la[77] = 1;
+                stLog[la[0] - 1] = "s";
+                tmpStLog[la[0] - 1] = "s";
+                stLog[la[0]] = "";
+                tmpStLog[la[0]] = "";
                 setLog();
             }
         }
@@ -1595,14 +1688,20 @@ public function recipe():void {
     rtxt += "\r■再振りレシピ\r";
     
     len = parseInt(lv.text);
-    st = parseInt(String(sl[1]).substr(0,1));
-    
-    var min:Number = 1;
+
+    // 開始レベル(LV1、ロアミニは LV200)の次のレベルから読む
+    var min:Number = l[0][0];
+    st = parseInt(String(sl[min]).substr(0,1));
     if(String(sl[l[0][0] - 1]).substr(0,1) == "s") {
         var a:Array = l[0];
         rtxt += "開始ステータス{ " + l[0].join(", ") + " }\r";
         min = l[0][0] -1;
         st = parseInt(String(sl[min]).substr(1,1));
+        // 編集したレベルで振っていなければ、通常と同じく次のレベルから読む
+        if(String(sl[min]).length < 2) {
+            min = l[0][0];
+            st = parseInt(String(sl[min]).substr(0,1));
+        }
     }
     
     for(var i:Number = min; i < len; i++) {
@@ -1640,6 +1739,11 @@ public function recipe():void {
         }
         var sll:String = replaceText( String(sl[i]), "s", "");
         var len2:Number = sll.length;
+        // ステータス編集したレベルは先頭にレベルアップのログが無いので、1 つ前のログと比べる
+        var adj:Number = 0;
+        if(i == l[0][0] - 1) {
+            adj = 1;
+        }
         for(var m:Number = 0; m < len2; m++) {
             
             if(bonusXienFlag && bonusLv <=l[lis + m - 1][0]) {
@@ -1657,11 +1761,11 @@ public function recipe():void {
                 if(m == 0 && sll.substr(m,1) != String(st)) {
                     rtxt += ", Lv  " + l[lis + m - 1][0];
                 }
-                if(Math.floor((l[lis + m][6 + st] * 5 + l[lis + m][0]) /125)
-                   - Math.floor((l[lis + m - 1 - lvupFlag][6 + st] * 5 + l[lis + m - 1 - lvupFlag][0]) /125) > 0) {
+                if(Math.floor((l[lis + m - adj][6 + st] * 5 + l[lis + m - adj][0]) /125)
+                   - Math.floor((l[lis + m - 1 - adj - lvupFlag][6 + st] * 5 + l[lis + m - 1 - adj - lvupFlag][0]) /125) > 0) {
                     
                     var num:Number = (DEFAULT_NEED_POINT[charCB.selectedIndex][styleCB.selectedIndex][st]
-                                               + Math.floor((l[lis + m][6 + st] * 5 +l[lis + m][0]) /125));
+                                               + Math.floor((l[lis + m - adj][6 + st] * 5 +l[lis + m - adj][0]) /125));
                     
                     rtxt += ", 必要Point " + num;
                 }
@@ -1673,10 +1777,8 @@ public function recipe():void {
         }
     }
     
-    if(m == undefined) {
-      m = 0;
-    }
-    lis += m + 1;
+    // 最後のログは今の状態(戻る(←)で取り消した操作は含めない)
+    lis = logindex + 1;
     if(bonusXienFlag && bonusLv <= l[lis - 1][0]) {
        rtxt += bonusXien;
        bonusXien = "";
@@ -1688,11 +1790,7 @@ public function recipe():void {
         if(l[lis - 1][0] == l[lis - 2][0] + 1) {
                lvupFlag = 1;
         }
-        if( l[lis][6 + st] == 0) {
-             l[lis][6 + st] =  l[lis - 1][6 + st];
-        }
-        
-        rtxt += STATUS_NAME[st] + " " + l[lis - lvupFlag][6 + st];
+        rtxt += STATUS_NAME[st] + " " + l[lis - 1][6 + st];
         if((DEFAULT_NEED_POINT[charCB.selectedIndex][styleCB.selectedIndex][st]
                                        + Math.floor((l[lis - 1][6 + st] * 5 +l[lis - 1][0]) /125)) > l[lis - 1 - lvupFlag][17]) {
             rtxt += ", Lv  " + l[lis - 1 - lvupFlag][0];
