@@ -9,3 +9,6 @@ bin-release/
 # Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
 # should NOT be excluded as they contain compiler settings and other important
 # information for Eclipse / Flash Builder.
+
+# Taste Skill 작업 파일(검사 결과, 스크린샷): 저장소에 넣지 않는다
+.taste-skill/
