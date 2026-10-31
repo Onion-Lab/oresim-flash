@@ -124,6 +124,15 @@ function oracleNow(S) {
   const startMark = S.log[0] ? S.stLog[S.log[0][0] - 1] : undefined;
   const edited = typeof startMark === 'string' && startMark.charAt(0) === 's';
   const c = S.charCB.selectedIndex;
+  // 필요 포인트(p_i)와 초록 숫자(s_iL)가 옛 값으로 남은 상태: 지금 LV·값으로 원본 updateStatus() 가 셈할 값과 다르다(중간에 멈춘
+  // 불러오기 뒤, 다음에 updateStatus() 를 도는 조작까지). 화면은 그때 'N부터 M' 대신 원본처럼 초록 숫자만 보인다
+  const dnp = S.DEFAULT_NEED_POINT[c] && S.DEFAULT_NEED_POINT[c][S.styleCB.selectedIndex];
+  const stale = !!dnp && STATS.some((_, i) => {
+    const lvN = H.as3ParseInt(S.lv.text);
+    const cost = dnp[i] + Math.floor((lvN + H.as3ParseInt(S[`s${i}`].text) * 5) / 125);
+    const next = Math.ceil(25 - lvN / 5) + (H.as3ParseInt(String(cost)) - dnp[i]) * 25;
+    return !Object.is(Number(S[`p${i}`].text), cost) || !Object.is(Number(S[`s${i}L`].text), next);
+  });
   return {
     char: c, type: S.styleCB.selectedIndex,
     charName: S.charCB.selectedItem ? S.charCB.selectedItem.label : '',
@@ -139,7 +148,7 @@ function oracleNow(S) {
       selected: S.xienCB.selectedItem ? S.xienCB.selectedItem.data : null,
       lines: S.xienList.source.map((it, k) => ({ x: it.data, name: it.label, selectable: S.xienCB.colors[k] !== 0 })),
     },
-    canUndo: S.logindex > 0, canRedo: !!(nextLog && nextLog[0] > 0), actions: S.logindex, edited,
+    canUndo: S.logindex > 0, canRedo: !!(nextLog && nextLog[0] > 0), actions: S.logindex, edited, stale,
   };
 }
 // 화면이 지우기 전에 묻는 계획: 조작이 있거나, 되돌려 둔 조작(다시 실행)이 있거나, 스탯 편집으로 시작한 계획
@@ -246,8 +255,8 @@ function lastWordsOf(marks, o) {
     case 'levelUp': return `레벨업 ${lvs}`;
     case 'statUp': return `${STATS[args[0]]} +1 (POINT${NB}${fmt(prev.point - o.point)} 사용)`;
     case 'dash': { const i = args[0]; return `${STATS[i]} ${fmt(prev.stats[i].value)} → ${fmt(o.stats[i].value)} 찍기${lvs ? ` · 레벨업 ${fmt(o.lv - prev.lv)}회` : ''}`; }
-    case 'undo': return `되돌리기${args[0] ? '(한 레벨)' : ''}${lvs ? ` ${lvs}` : ''}`;
-    case 'redo': return `다시 실행${args[0] ? '(한 레벨)' : ''}${lvs ? ` ${lvs}` : ''}`;
+    case 'undo': return `되돌리기${args[0] ? '(대시 단위)' : ''}${lvs ? ` ${lvs}` : ''}`;
+    case 'redo': return `다시 실행${args[0] ? '(대시 단위)' : ''}${lvs ? ` ${lvs}` : ''}`;
     case 'editCommit': return '스탯 편집';
     default: return null;
   }
@@ -284,7 +293,8 @@ function compareScreen(scr, o, marks, probe, msgs) {
     eq(`${st.key} 줄`, s.key, st.key);
     eq(`${st.key} 값`, s.value, fmt(st.value));
     eq(`${st.key} 필요 포인트`, s.cost, String(st.cost));
-    eq(`${st.key} 비용이 오르는 값`, s.next, st.atCap || st.next > cap ? `상한 ${fmt(cap)}` : `${fmt(st.next)}부터${NB}${st.cost + 1}`);
+    // 'N부터 M'(초록 숫자에서 비용이 지금 + 1): 초록 숫자가 옛 값이면 원본처럼 숫자만. 상한(값으로 정해진다)은 그때도 '상한 285'
+    eq(`${st.key} 비용이 오르는 값`, s.next, st.atCap ? `상한 ${fmt(cap)}` : o.stale ? fmt(st.next) : st.next > cap ? `상한 ${fmt(cap)}` : `${fmt(st.next)}부터${NB}${st.cost + 1}`);
     eq(`${st.key} +1 꺼짐`, s.upOff, !st.canUp);
     eq(`${st.key} +1 이름`, s.upLabel, `${st.key} +1, ${st.cost}포인트`);
     if (!st.canDash) eq(`${st.key} 대시 꺼짐(원본에서 숨은 단추)`, s.dashOff, true);
@@ -922,7 +932,8 @@ class Run {
     }
     // 불러오기
     const n0 = await this.acts();
-    if (load === 'P') { await this.keysReady(); await page.keyboard.press('KeyP'); }
+    let activeBefore = '';                   // P 를 누르기 직전의 초점(P 는 초점을 옮기지 않는다)
+    if (load === 'P') { await this.keysReady(); activeBefore = await page.evaluate(() => (document.activeElement === document.body ? 'BODY' : document.activeElement.id)); await page.keyboard.press('KeyP'); }
     else if (load === 'ctrlEnter' && kind !== 'empty') { await page.click('#paste-text'); await page.keyboard.press('Control+Enter'); }
     else await page.click('#load');
     await page.waitForTimeout(10);
@@ -968,7 +979,9 @@ class Run {
     if (end.msg !== want) msgs.push(`불러온 뒤 안내: 화면 ${JSON.stringify(end.msg)} / 원본(footer ${r.footer}, typeFound ${r.typeFound}, restarted ${r.restarted}, error ${!!r.error}) ${JSON.stringify(want)}`);
     const clean = r.footer && !r.error;
     if ((end.value === '') !== clean) msgs.push(`불러온 뒤 칸: ${end.value === '' ? '비움' : '남김'} / 깨끗이 읽음 ${clean}`);
-    if (end.active === 'BODY') msgs.push('불러온 뒤 초점이 <body> 로 떨어졌습니다');
+    // 불러오기가 초점을 <body> 로 떨어뜨리면 안 된다. 다만 P 는 초점을 옮기지 않으므로(원본도 처리 끝에 application.setFocus()), 칸에서
+    // Esc 로 나와 <body> 에 있던 초점은 묻지 않고 읽은 뒤에도 <body> 그대로다(확인 창을 거치면 연 단추 '로그 불러오기'로 돌아간다)
+    if (end.active === 'BODY' && activeBefore !== 'BODY') msgs.push('불러온 뒤 초점이 <body> 로 떨어졌습니다');
     if (msgs.length) this.fail(msgs, 'import-after');
   }
   async reload() {
@@ -1190,6 +1203,11 @@ const SCRIPT_LIST = [
     r.step++; await r.importLog('garbled', atEnd, 'type', 'click', 'go'); await r.check({ probe: true, both: true });
     for (const a of [() => r.keyHistory(true, false), () => r.keyHistory(true, true), () => r.clickHistory(true, false), () => r.keyDash(0), () => r.keyStat(0), () => r.keyLevelUp()]) { r.step++; await a(); await r.check({ probe: true, both: true }); }
     r.step++; await r.reload(); await r.check({ probe: true });
+    // 낮은 LV 에서 멈춘 불러오기: 값은 모두 옛 비용 단계 안에 있지만 초록 숫자는 LV 1 의 것(25, 지금 LV 8 로는 24). 새로 고친 뒤에도,
+    // 보너스를 바꿔도(updateStatus 를 돌지 않는다) 그대로이고, 받아들여진 +1 에서 바로잡힌다
+    const short = ['LV   1       :', 'Bonus        : 50%', 'Xien         : 도계 HACK/DEF', 'LV   2 -   8 :', '루시안/물리복합 Bonus: 0 / 7 Point: 0', 'Bonus :75%'].join('\r\n');
+    r.step++; await r.importLog('garbled', short, 'type', 'click', 'go'); await r.check({ probe: true, both: true });
+    for (const a of [() => r.reload(), () => r.bonusStep(true), () => r.clickUp(2), () => r.keyLevelUp()]) { r.step++; await a(); await r.check({ probe: true }); }
   }],
   ['처음까지 되돌린 계획(다시 실행할 조작 있음): 캐릭터·타입·초기화·불러오기·편집이 묻는다', async (r) => {
     r.step++; await r.runKeys('KeyL', 10, 'levelUp'); await r.check({});

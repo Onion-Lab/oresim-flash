@@ -1,6 +1,9 @@
 // 웹 화면 연기 시험(smoke test): web/ 을 내보내고 진짜 브라우저(Playwright의 Chromium)로 연다.
 // 확인하는 것: 시작, 진짜 키와 클릭으로 한 몇 가지 조작, 화면의 숫자 = OresimUI.engine().view() (와 대시 이름표 =
-// previewDash), 새로 고침 뒤 되살리기(되돌리기 기록까지), 공유 링크 왕복, 붙여넣은 로그 왕복, 깨끗한 콘솔.
+// previewDash), 새로 고침 뒤 되살리기(되돌리기 기록까지), 공유 링크 왕복, 지울 계획이 있을 때 링크를 묻는 동안 주소창에 남는 링크,
+// 손으로 만든 무거운 링크의 거절, 붙여넣은 로그 왕복, 깨끗한 콘솔.
+// 공유 링크 왕복에서 알려진 예외 하나: 조작 0회인 계획(처음까지 되돌린 계획 등)의 로그 첫머리 'Bonus' 줄은 원본이 기록 맨 앞 칸에
+// 덧쓴 값이라 받는 쪽에서 같은 글로 다시 만들 수 없다(원본도 같다). 보너스 값은 링크의 b 로 같아진다(web/js/app.js 의 linkCandidate).
 // 저장소는 npm 을 쓰지 않는다: playwright 를 불러오지 못하거나 브라우저를 띄우지 못하면 그렇게 말하고 0 으로 끝낸다.
 // 실행(저장소 맨 위에서): node tests/web-smoke.js
 'use strict';
@@ -139,6 +142,42 @@ const decodeLink = (link) => {
     const opened = await engineState(page2);
     ok(opened.log === now.log && opened.b === now.b && opened.x === now.x && (await page2.evaluate(() => location.hash)) === '', 'the link opens the same plan in a fresh browser and clears the hash');
     await ctx2.close();
+
+    // ---- 지울 계획이 있는 탭에 다른 계획의 링크: 묻는 동안 주소창에 링크가 남아 새로 고쳐도 다시 묻고, 답하면 지워진다 ----
+    const other = await page.evaluate(() => { const C = window.Oresim.createEngine(); C.setChar(4); for (let i = 0; i < 6; i++) { C.levelUp(); C.statUp(2); } return { v: 1, log: C.exportLog().split('\r').join('\n'), b: C.view().bonus.rate, x: C.view().xien.selected }; });
+    const hashOf = (data) => '#p=' + zlib.deflateRawSync(Buffer.from(JSON.stringify(data))).toString('base64url');
+    const asking = () => page.evaluate(() => ({ open: document.querySelector('#confirm').open, title: document.querySelector('#confirm-title').textContent, desc: document.querySelector('#confirm-desc').textContent, hash: location.hash }));
+    const otherHash = hashOf(other);
+    await page.evaluate((h) => { location.hash = h; }, otherHash);
+    await page.waitForSelector('#confirm[open]', { timeout: 5000 });
+    let q = await asking();
+    ok(q.title === '링크의 계획을 열까요?' && q.hash === otherHash, 'a link over a plan with work asks, and the link stays in the address bar while asking');
+    await page.reload();
+    await page.waitForSelector('#confirm[open]', { timeout: 5000 });
+    q = await asking();
+    ok(q.title === '링크의 계획을 열까요?' && q.hash === otherHash, 'reloading during the question asks about the same link again');
+    await page.waitForTimeout(400);
+    await page.click('#confirm-cancel');
+    await page.waitForFunction(() => !document.querySelector('#confirm').open);
+    await page.waitForTimeout(100);
+    const kept = await engineState(page);
+    ok(kept.log === now.log && (await page.evaluate(() => location.hash)) === '', '저장된 계획 유지 keeps the plan and clears the link from the address bar');
+
+    // ---- 손으로 만든 링크(Status 줄 둘, 음수 LV): 엔진이 몇 초씩 일하게 하는 글이라 읽지 않고 곧바로 거절한다 ----
+    const status = (lv) => 'Status       : ' + [lv, 0, 50, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 9999, 1, 1, 1, 0, 1, 1, 1, 0].concat(Array(52).fill(0)).join(',');
+    for (const [what, lines] of [['two Status lines', [status(1), 'LV   1 - 285 : STAB', status(1), 'LV   1 - 285 : STAB']], ['a Status line with LV -99999', [status(-99999), 'LV -99999 - 285 : STAB']]]) {
+      const t0 = Date.now();
+      await page.evaluate((h) => { location.hash = h; }, hashOf({ v: 1, log: lines.concat('루시안/물리복합 Bonus: 0 / 284 Point: 0').join('\n'), b: 50, x: 0 }));
+      await page.waitForSelector('#confirm[open]', { timeout: 5000 });
+      const ms = Date.now() - t0;
+      q = await asking();
+      ok(q.title === '링크의 계획을 읽지 못했습니다' && /손상/.test(q.desc) && ms < 1500, `a crafted link with ${what} is refused at once (${ms} ms)`);
+      await page.waitForTimeout(400);
+      await page.click('#confirm-go');
+      await page.waitForFunction(() => !document.querySelector('#confirm').open);
+      await page.waitForTimeout(100);
+    }
+    ok((await engineState(page)).log === now.log && (await page.evaluate(() => location.hash)) === '', 'after the refused links the plan is unchanged and the address bar is clear');
 
     // ---- 붙여넣은 로그 왕복 ----
     const ctx3 = await browser.newContext({ viewport: { width: 1440, height: 900 } });

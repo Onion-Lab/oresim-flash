@@ -30,6 +30,9 @@
   }
   // 자식 바꾸기: null/false/빈 문자열은 넣지 않는다(replaceChildren은 null을 'null' 글자로 넣는다)
   const put = (node, ...kids) => node.replaceChildren(...kids.flat(Infinity).filter((k) => k != null && k !== false && k !== '').map((k) => (k instanceof Node ? k : document.createTextNode(String(k)))));
+  // 글자와 속성은 달라졌을 때만 쓴다: 같은 값을 다시 써도 브라우저는 그 자리의 스타일과 레이아웃을 다시 계산한다(키를 누르고 있는 동안)
+  const setText = (node, t) => { if (node.textContent !== t) node.textContent = t; };
+  const setAttr = (node, k, v) => { if (v == null) { if (node.hasAttribute(k)) node.removeAttribute(k); } else if (node.getAttribute(k) !== v) node.setAttribute(k, v); };
   const SVGNS = 'http://www.w3.org/2000/svg';
   function s(tag, attrs, ...kids) {
     const el = document.createElementNS(SVGNS, tag);
@@ -81,7 +84,7 @@
   };
 
   // ---------- 엔진과 그 표의 값 ----------
-  // index.html 이 js/const.js, js/engine.js 를 이 파일보다 먼저 읽는다(contract.md). 표의 값은 Oresim.CONST 에서 읽는다
+  // index.html 이 js/const.js, js/engine.js 를 이 파일보다 먼저 읽는다(CLAUDE.md '웹판'). 표의 값은 Oresim.CONST 에서 읽는다
   const Oresim = window.Oresim;
   const CONST = Oresim.CONST;
   const SHORTCUT = ['S', 'H', 'I', 'F', 'M', 'X', 'A'];
@@ -180,9 +183,10 @@
     });
     const byKey = Object.fromEntries(stats.map((x) => [x.key, x]));
     // 원본처럼 중간에 멈춘 불러오기 뒤에는 updateStatus() 가 돌지 않아, 필요 포인트와 비용이 오르는 값(초록 숫자)이 그 앞 상태의
-    // 것으로 남는다(원본도 그렇고, 다음 조작에서 바로잡힌다). 값이 제 비용 단계 밖에 있는 스탯이 하나라도 있으면 그때다: 화면은
-    // 원본처럼 그 숫자를 그대로 보이되, 그 숫자로 셈한 말(비용이 오르는 곳, 몇 번 더 찍는지, 몇 회 찍으면 얼마 남는지)은 하지 않는다
-    const staleSteps = stats.some((x) => !x.atCap && !x.lastStep && Number.isFinite(x.value + x.nextStepAt) && (x.value < x.start || x.value >= x.nextStepAt));
+    // 것으로 남는다(원본도 그렇고, 다음 조작에서 바로잡힌다). 그때 화면은 원본처럼 그 숫자를 그대로 보이되, 그 숫자로 셈한 말(비용이
+    // 오르는 곳, 'N부터 M', 몇 번 더 찍는지, 몇 회 찍으면 얼마 남는지)은 하지 않는다. 그 상태인지는 엔진에 물어 둔 것(model.stale,
+    // costsStale)으로 안다. 값이 제 비용 단계 밖에 있는 스탯이 있으면 물어보지 않아도 그 상태다(바로잡힌 숫자에서는 생기지 않는다)
+    const staleSteps = !!model.stale || stats.some((x) => !x.atCap && !x.lastStep && Number.isFinite(x.value + x.nextStepAt) && (x.value < x.start || x.value >= x.nextStepAt));
 
     // 발견: 계획이 포인트를 쏟는 스탯과 그 비용(로그의 몰빵 줄에서)
     const dumpRow = [...lvRows].reverse().find((r) => /몰빵/.test(r.text));
@@ -192,7 +196,10 @@
     const maxCost = open.length ? Math.max(...open.map((x) => x.cost)) : 0;
     const priciest = open.find((x) => x.cost === maxCost) || null;
     const focusStat = dump ? byKey[dump.key] : priciest;
-    const fresh = v.actions === 0;
+    // 새 계획: 조작이 없고, 되돌려 둔 조작도 없고, 스탯 편집으로 시작하지도 않았다(지우기 전에 묻지 않는 계획과 같다, hasWork).
+    // 처음까지 되돌린 계획(조작 0회, 다시 실행할 것이 있다)은 새 계획이 아니다
+    const fresh = !hasWork(v);
+    const rewound = v.actions === 0 && v.canRedo;
 
     // 직전 조작으로 바뀐 값(▲N): UI가 기억한 그 전 view와 비교
     const changes = prev ? {
@@ -209,7 +216,7 @@
       hp: shown.hp.value !== v.hp.value, mp: shown.mp.value !== v.mp.value, sp: shown.sp.value !== v.sp.value,
     } : null;
     const lineSel = v.xien.lines.find((l) => l.x === v.xien.selected) || v.xien.lines[0];
-    return { v, p, prev, last: ctx && ctx.last, log, lvRows, footer, summary, atMax, stats, byKey, staleSteps, dump, priciest, focusStat, fresh, changes, moved, lineSel, logText: model.log || '', guide: model.guide || '' };
+    return { v, p, prev, last: ctx && ctx.last, log, lvRows, footer, summary, atMax, stats, byKey, staleSteps, dump, priciest, focusStat, fresh, rewound, changes, moved, lineSel, logText: model.log || '', guide: model.guide || '' };
   }
 
   // 발견 문장: 제목 줄 밑에서 먼저 읽힌다
@@ -222,8 +229,11 @@
     // 'DEX(9포인트)입니다'는 한 덩어리로(괄호 뒤의 '입니다'만 다음 줄로 가지 않게)
     const priced = (st) => `${st.key}(${st.cost}포인트)${WJ}입니다.`;
     if (D.fresh) {
-      return [h('b', null, '새 계획입니다.'), ' ', `LV${NB}${fmt(v.lv)}에서 시작합니다.`, p ? ` 레벨업(L)${WJ}하면 POINT가${NB}${fmt(p.point)} 늘어납니다.` : ''];
+      // '레벨업(L)하면'은 한 덩어리로(괄호 앞뒤 어디에서도 줄이 바뀌지 않게)
+      return [h('b', null, '새 계획입니다.'), ' ', `LV${NB}${fmt(v.lv)}에서 시작합니다.`, p ? ` 레벨업${WJ}(L)${WJ}하면 POINT가${NB}${fmt(p.point)} 늘어납니다.` : ''];
     }
+    // 처음까지 되돌린 계획: 새 계획이 아니다(되돌린 조작이 남아 있고, 바꾸기 전에 묻는다)
+    if (D.rewound) return [h('b', null, '처음으로 되돌렸습니다.'), ' ', `다시 실행${WJ}(→)${WJ}으로 되살릴 수 있습니다.`];
     if (D.atMax) {
       const can = D.stats.filter((x) => x.canUp).map((x) => x.key);
       return [h('b', null, `최고 레벨 LV${NB}${fmt(v.maxLv)}.`), ' ',
@@ -267,8 +277,10 @@
       case 'levelUp': return `레벨업 ${lvs}`;
       case 'statUp': { const k = STAT_KEYS[a[0]]; return `${k} +1 (POINT${NB}${fmt(prev.point - v.point)} 사용)`; }
       case 'dash': { const i = a[0]; return `${STAT_KEYS[i]} ${fmt(prev.stats[i].value)} → ${fmt(v.stats[i].value)} 찍기${lvs ? ` · 레벨업 ${fmt(v.lv - prev.lv)}회` : ''}`; }
-      case 'undo': return `되돌리기${a[0] ? '(한 레벨)' : ''}${lvs ? ` ${lvs}` : ''}`;
-      case 'redo': return `다시 실행${a[0] ? '(한 레벨)' : ''}${lvs ? ` ${lvs}` : ''}`;
+      // ⇧+←/→ 는 한 레벨이 아니라 대시 단위로 움직인다(엔진의 undo(true)/redo(true), 원본 dashBack/dashProgress: 같은 스탯을 같은
+      // 비용으로 찍은 조작을 사이의 레벨업과 함께, 보너스·주력 계열이 그대로인 동안 한꺼번에)
+      case 'undo': return `되돌리기${a[0] ? '(대시 단위)' : ''}${lvs ? ` ${lvs}` : ''}`;
+      case 'redo': return `다시 실행${a[0] ? '(대시 단위)' : ''}${lvs ? ` ${lvs}` : ''}`;
       case 'editCommit': return '스탯 편집';
       case 'importLog': case 'openShared': return '로그 불러오기';
       default: return null;
@@ -328,6 +340,7 @@
     }
     const scopeKey = `${v.char}:${v.type}`;
     if (el.scope.dataset.key !== scopeKey) {
+      // 범위 버튼(얼굴, 이름, 타입)은 캐릭터나 타입이 바뀔 때만 새로 짓는다
       el.scope.dataset.key = scopeKey;
       put(el.scope, h('img', { src: `img/c${v.char}.png`, alt: '', width: 28, height: 28 }),
         h('span', { class: 'scope-name' }, v.charName), h('span', { class: 'scope-type' }, v.typeName), icon(ICON.chev));
@@ -339,50 +352,55 @@
   // 타입 단추는 캐릭터가 바뀔 때만 새로 짓고, 타입이 바뀌면 눌림(aria-pressed)만 고친다: 방금 누른 단추에 초점이 남게
   function renderTitle(D) {
     const { v } = D;
-    el.portrait.src = `img/c${v.char}.png`;
-    el.name.textContent = v.charName;
-    el.typeLabel.textContent = v.typeName;
+    setAttr(el.portrait, 'src', `img/c${v.char}.png`);
+    setText(el.name, v.charName);
+    setText(el.typeLabel, v.typeName);
     if (el.types.dataset.char !== String(v.char)) {
       const typeButtons = () => v.chars[v.char].types.map((t, i) => h('button', { type: 'button', 'data-type': i }, t));
       put(el.types, ...typeButtons()); put(el.sheetTypes, ...typeButtons());
       el.types.dataset.char = String(v.char);
     }
-    for (const b of [...el.types.children, ...el.sheetTypes.children]) b.setAttribute('aria-pressed', +b.dataset.type === v.type ? 'true' : 'false');
-    el.types.setAttribute('aria-label', `타입 (바꾸면 LV ${v.chars[v.char].startLv}부터 새 계획)`);
+    for (const b of [...el.types.children, ...el.sheetTypes.children]) setAttr(b, 'aria-pressed', +b.dataset.type === v.type ? 'true' : 'false');
+    setAttr(el.types, 'aria-label', `타입 (바꾸면 LV ${v.chars[v.char].startLv}부터 새 계획)`);
     const fnodes = findingNodes(D);
     const fsig = fnodes.map((n) => (n instanceof Node ? `<b>${n.textContent}</b>` : String(n))).join('');
     if (el.finding.dataset.sig !== fsig) { el.finding.dataset.sig = fsig; put(el.finding, ...fnodes); }
-    $('#reset-what').textContent = `${v.charName}/${v.typeName} LV ${v.chars[v.char].startLv} 시작 상태로 되돌립니다. 바꾸기 전에 확인합니다.`;
-    document.title = `${v.charName} ${v.typeName} LV ${v.lv} · 나만의 재분배 시뮬레이터`;
+    setText(resetWhat, `${v.charName}/${v.typeName} LV ${v.chars[v.char].startLv} 시작 상태로 되돌립니다. 바꾸기 전에 확인합니다.`);
+    const title = `${v.charName} ${v.typeName} LV ${v.lv} · 나만의 재분배 시뮬레이터`;
+    if (document.title !== title) document.title = title;
   }
+  const resetWhat = $('#reset-what');
 
   // 1. 스탯 카드의 띠: POINT와 LV, HP / MP / SP(휴대폰에서는 일곱 줄 뒤)
-  // 칸마다 그리는 것(숫자, ▲, 움직임, 밑줄)이 지난번과 같으면 그 칸은 그대로 둔다(키를 누르고 있는 동안 바뀐 칸만 새로 짓는다)
+  // 칸은 한 번 짓고, 숫자 줄과 밑줄을 따로 고친다: 그리는 것(숫자, ▲, 움직임, 밑줄)이 지난번과 같은 줄은 그대로 둔다
+  // (키를 누르고 있는 동안 바뀐 줄만 새로 짓는다. 움직임은 숫자를 새로 지을 때 다시 시작한다)
   const stripCells = {};
-  function stripCell(parent, key, sig, build) {
-    const old = stripCells[key];
-    if (old && old.sig === sig && old.node.parentNode === parent) return;
-    const node = build();
-    if (old && old.node.parentNode === parent) old.node.replaceWith(node); else parent.append(node);
-    stripCells[key] = { sig, node };
+  function stripCell(parent, key, label, lead, valueSig, value, subSig, sub) {
+    let c = stripCells[key];
+    if (!c || c.node.parentNode !== parent) {
+      const valueP = h('p', { class: 'cell-value' + (lead ? ' lead' : '') });
+      const subP = h('p', { class: 'cell-sub' });
+      const node = h('div', { class: 'cell' + (lead ? ' lead-cell' : '') }, h('p', { class: 'cell-label' }, label), valueP, subP);
+      parent.append(node);
+      c = stripCells[key] = { node, valueP, subP, valueSig: null, subSig: null };
+    }
+    if (c.valueSig !== valueSig) { c.valueSig = valueSig; put(c.valueP, value()); }
+    if (c.subSig !== subSig) { c.subSig = subSig; put(c.subP, sub()); }
   }
   function renderStrip(D) {
     const { v, changes: c, moved: mv } = D;
     const base = lastWords(D);
     const fig = (n, moved, cls) => h('span', { class: 'fig' + (cls ? ' ' + cls : '') + (moved ? ' is-changed' : '') }, fmt(n));
-    const cell = (label, value, sub, lead) => h('div', { class: 'cell' + (lead ? ' lead-cell' : '') },
-      h('p', { class: 'cell-label' }, label), h('p', { class: 'cell-value' + (lead ? ' lead' : '') }, value), h('p', { class: 'cell-sub' }, sub));
     const sub = pointSub(D);
     const pc = (c && c.point) || 0, pm = !!(mv && mv.point);
-    stripCell(el.stripLead, 'point', JSON.stringify([v.point, pc, pm, pc ? base : '', sub]),
-      () => cell('POINT', [fig(v.point, pm), chg(pc, base, pm)], sub, true));
+    stripCell(el.stripLead, 'point', 'POINT', true, JSON.stringify([v.point, pc, pm, pc ? base : '']), () => [fig(v.point, pm), chg(pc, base, pm)], sub, () => sub);
     const lm = !!(mv && mv.lv);
-    stripCell(el.stripLead, 'lv', JSON.stringify([v.lv, lm, v.maxLv, D.atMax]),
-      () => cell('LV', [fig(v.lv, lm), h('span', { class: 'unit' }, `/${NB}${fmt(v.maxLv)}`)], D.atMax ? '최고 레벨' : `${fmt(v.maxLv - v.lv)}레벨 남음`));
+    const lvSub = D.atMax ? '최고 레벨' : `${fmt(v.maxLv - v.lv)}레벨 남음`;
+    stripCell(el.stripLead, 'lv', 'LV', false, JSON.stringify([v.lv, lm, v.maxLv]), () => [fig(v.lv, lm), h('span', { class: 'unit' }, `/${NB}${fmt(v.maxLv)}`)], lvSub, () => lvSub);
     for (const [k, x, d0, m0] of [['HP', v.hp, c && c.hp, mv && mv.hp], ['MP', v.mp, c && c.mp, mv && mv.mp], ['SP', v.sp, c && c.sp, mv && mv.sp]]) {
       const d = d0 || 0, m = !!m0;
-      stripCell(el.stripVitals, k, JSON.stringify([x, d, m, d ? base : '']),
-        () => cell(k, [fig(x.value, m), chg(d, base, m)], [h('span', { class: 'sr-only' }, '범위 '), `${fmt(x.min)}${NB}~ ${fmt(x.max)}`]));
+      stripCell(el.stripVitals, k, k, false, JSON.stringify([x.value, d, m, d ? base : '']), () => [fig(x.value, m), chg(d, base, m)],
+        `${x.min}~${x.max}`, () => [h('span', { class: 'sr-only' }, '범위 '), `${fmt(x.min)}${NB}~ ${fmt(x.max)}`]);
     }
     // 아래쪽 안개 바(1100px 이하)도 같은 값을 읽는다
     const abSig = JSON.stringify([v.point, pc, pm, pc ? base : '', v.lv, v.maxLv]);
@@ -398,20 +416,22 @@
 
   // 비용 계단(시안 A의 SVG 획). 앞 계단 16px | 디딤판(늘어난다) | 챌판과 다음 디딤판 20px.
   // 디딤판의 좌표는 퍼센트라 너비가 바뀌어도 다시 그릴 필요가 없고, +1 미리보기는 눈금에서 시작해 최소 6px.
-  // 대시 미리보기는 눈금에서 대시 뒤의 값(엔진의 previewDash)까지
-  function stairEl(st) {
+  // 대시 미리보기는 눈금에서 대시 뒤의 값(엔진의 previewDash)까지.
+  // blank: 비용 단계가 옛 값으로 남은 상태(D.staleSteps). 디딤판의 자리를 그 옛 숫자로 정했으므로 값의 자리(채움, 눈금)와
+  // 미리보기는 그리지 않고 빈 디딤판만 둔다(다음 조작에서 바로잡힌다)
+  function stairEl(st, blank) {
     const pct = (x) => `${(x * 100).toFixed(3)}%`;
     const F = pct(st.fill);
-    const end = st.atCap || st.lastStep;
-    return h('span', { class: 'stair' + (st.hasPrev ? '' : ' no-prev') + (end ? ' at-end' : ''), 'aria-hidden': 'true' },
+    const end = st.atCap || (!blank && st.lastStep);
+    return h('span', { class: 'stair' + (st.hasPrev && !blank ? '' : ' no-prev') + (end ? ' at-end' : ''), 'aria-hidden': 'true' },
       s('svg', { class: 'st-prev', width: 16, height: 24, focusable: 'false' }, s('path', { class: 'prev', d: 'M1 21H15V17' })),
       s('svg', { class: 'st-tread', height: 24, focusable: 'false' },
         s('line', { class: 'tread', x1: 0, x2: '100%', y1: 14, y2: 14 }),
-        st.dashOn ? s('line', { class: 'pv pv-dash', x1: F, x2: pct(st.dashTo), y1: 14, y2: 14 }) : null,
-        st.atCap ? null : s('svg', { class: 'pv pv-up', x: F, y: 0, overflow: 'visible' },
+        !blank && st.dashOn ? s('line', { class: 'pv pv-dash', x1: F, x2: pct(st.dashTo), y1: 14, y2: 14 }) : null,
+        blank || st.atCap ? null : s('svg', { class: 'pv pv-up', x: F, y: 0, overflow: 'visible' },
           s('line', { x1: 0, x2: pct(st.one), y1: 14, y2: 14 }), s('line', { x1: 0, x2: 6, y1: 14, y2: 14 })),
-        st.fill > 0 ? s('line', { class: 'fill', x1: 0, x2: F, y1: 14, y2: 14 }) : null,
-        s('line', { class: 'tick', x1: F, x2: F, y1: 7, y2: 21 })),
+        !blank && st.fill > 0 ? s('line', { class: 'fill', x1: 0, x2: F, y1: 14, y2: 14 }) : null,
+        blank ? null : s('line', { class: 'tick', x1: F, x2: F, y1: 7, y2: 21 })),
       s('svg', { class: 'st-next', width: 20, height: 24, focusable: 'false' },
         s('path', { class: 'edge', d: end ? 'M1 17V3' : 'M1 17V5H19' })));
   }
@@ -444,50 +464,67 @@
       const isFocus = !!(D.dump && D.dump.key === st.key && !st.atCap);
       const d = c && c.stats[i];
       const m = !!(mv && mv.stats[i]);
-      // 이 줄이 그리는 것이 지난번과 같으면 그대로 둔다(누르고 있는 동안 일곱 줄을 모두 새로 짓지 않게). ▲ 표시와 움직임도 열쇠에 든다
-      const sig = JSON.stringify([st.value, st.cost, st.nextStepAt, st.canUp, st.canDash, st.atCap, st.dash, isFocus, isFocus && D.dump.from, isFocus && D.dump.to,
-        d || 0, m, d ? base : '', D.staleSteps, D.v.lv, D.v.point, D.atMax]);
-      if (row._sig === sig) return;
-      row._sig = sig;
-      row.classList.toggle('focus', isFocus);
       const [nameC, valC, chgC, costC, stairC] = row.children;
-      put(nameC, h('span', null, st.key), isFocus ? h('span', { class: 'pill', title: `LV ${fmt(D.dump.from)}–${fmt(D.dump.to)} 재분배 로그` }, '몰빵 중') : null);
-      put(valC, h('span', { class: m ? 'is-changed' : null }, fmt(st.value)), chg(d, base, m));
-      put(chgC, ...[chg(d, base, m)].filter(Boolean));
-      put(costC, h('span', { class: 'c-label' }, `필요${NB}`), String(st.cost));
-      // 비용 계단의 말풍선. 비용 단계가 옛 값으로 남은 상태에서는 몇 번 더 찍는지 셈하지 않는다(다음 조작에서 바로잡힌다)
-      stairC.title = st.atCap ? `${st.key}: 상한 ${fmt(st.cap)}`
-        : D.staleSteps ? `${st.key}: +1에 ${st.cost}포인트 · 비용이 오르는 값은 다음 조작 때 다시 계산됩니다`
-          : st.lastStep ? `${fmt(st.start)}부터 상한 ${fmt(st.cap)}까지 +1에 ${st.cost}포인트 · ${fmt(st.left)}번 더 찍으면 상한`
-            : `${fmt(st.start)}부터 ${fmt(st.nextStepAt - 1)}까지 +1에 ${st.cost}포인트 · ${fmt(st.left)}번 더 찍으면 ${fmt(st.nextStepAt)}`;
-      put(stairC, stairEl(st), h('span', { class: 's-next' },
-        st.atCap || st.lastStep ? ['상한 ', h('b', null, fmt(st.cap))] : [h('b', null, fmt(st.nextStepAt)), `부터${NB}${st.cost + 1}`]));
       const up = row.querySelector('.up');
       const dash = row.querySelector('.dash');
+      // 줄을 칸별로 그린다: 칸이 보여 주는 것(글자, ▲ 표시와 움직임, 말풍선)이 지난번과 같으면 그 칸은 그대로 둔다. 키를 누르고 있는
+      // 동안 바뀐 칸만 새로 지어, 레이아웃과 스타일 다시 계산이 페이지의 작은 부분에서 끝나게
+      const parts = row._parts || (row._parts = {});
+      const part = (key, sig, draw) => { if (parts[key] !== sig) { parts[key] = sig; draw(); } };
+      part('name', JSON.stringify([isFocus, isFocus && D.dump.from, isFocus && D.dump.to]), () => {
+        row.classList.toggle('focus', isFocus);
+        put(nameC, h('span', null, st.key), isFocus ? h('span', { class: 'pill', title: `LV ${fmt(D.dump.from)}–${fmt(D.dump.to)} 재분배 로그` }, '몰빵 중') : null);
+      });
+      part('val', JSON.stringify([st.value, d || 0, m, d ? base : '']), () => {
+        put(valC, h('span', { class: m ? 'is-changed' : null }, fmt(st.value)), chg(d, base, m));
+        put(chgC, ...[chg(d, base, m)].filter(Boolean));
+      });
+      part('cost', String(st.cost), () => put(costC, h('span', { class: 'c-label' }, `필요${NB}`), String(st.cost)));
+      // 비용 계단의 말풍선. 비용 단계가 옛 값으로 남은 상태에서는 몇 번 더 찍는지 셈하지 않는다(다음 조작에서 바로잡힌다)
+      const stale = D.staleSteps && !st.atCap;           // 상한은 값으로 정해지므로 그 상태에서도 그대로 말한다
+      const stairTitle = st.atCap ? `${st.key}: 상한 ${fmt(st.cap)}`
+        : stale ? `${st.key}: +1에 ${st.cost}포인트 · 비용이 오르는 값은 다음 조작 때 다시 계산됩니다`
+          : st.lastStep ? `${fmt(st.start)}부터 상한 ${fmt(st.cap)}까지 +1에 ${st.cost}포인트 · ${fmt(st.left)}번 더 찍으면 상한`
+            : `${fmt(st.start)}부터 ${fmt(st.nextStepAt - 1)}까지 +1에 ${st.cost}포인트 · ${fmt(st.left)}번 더 찍으면 ${fmt(st.nextStepAt)}`;
+      part('stair', JSON.stringify([stairTitle, stale, st.fill, st.one, st.dashOn, st.dashTo, st.hasPrev, st.atCap, st.lastStep, st.nextStepAt, st.cost, st.cap]), () => {
+        stairC.title = stairTitle;
+        // 'N부터 M': 엔진의 초록 숫자 N에서 비용이 M(지금 비용 + 1)이 된다. 그 숫자가 옛 값이면 원본처럼 숫자만 보인다
+        put(stairC, stairEl(st, stale), h('span', { class: 's-next' },
+          st.atCap ? ['상한 ', h('b', null, fmt(st.cap))]
+            : stale ? [h('b', null, fmt(st.nextStepAt))]
+              : st.lastStep ? ['상한 ', h('b', null, fmt(st.cap))] : [h('b', null, fmt(st.nextStepAt)), `부터${NB}${st.cost + 1}`]));
+      });
       // 꺼진 +1 의 까닭. 원본처럼 비용 단계가 옛 값으로 남으면 포인트가 넉넉해도 꺼져 있을 수 있다: 그때는 '포인트 부족'이라 하지 않는다
       const whyUp = st.canUp ? '' : st.atCap ? '상한입니다' : D.v.point >= st.cost ? '지금은 찍을 수 없습니다' : `포인트 부족: ${st.cost} 필요`;
-      up.setAttribute('aria-label', `${st.key} +1, ${st.cost}포인트`);
-      setDisabled(up, whyUp);
+      part('up', JSON.stringify([st.cost, whyUp]), () => {
+        up.setAttribute('aria-label', `${st.key} +1, ${st.cost}포인트`);
+        setDisabled(up, whyUp);
+      });
       // 대시: 엔진의 previewDash 가 말하는 곳까지. 레벨업이 끼면 몇 번, LV 몇에서 몇까지인지도 말한다.
       // 말풍선(title)은 단추의 글자에 없는 것(레벨업 횟수)만: 이름과 같은 말을 되풀이하면 화면 낭독기가 두 번 읽는다
       const dd = st.dash;
-      if (st.dashOn) {
-        const ups = dd.levelUps > 0 ? `레벨업 ${fmt(dd.levelUps)}번 (LV${NB}${fmt(D.v.lv)} → ${fmt(dd.lv)})` : '';
-        dash.querySelector('.dest').textContent = `${fmt(dd.value)}까지`;
-        dash.setAttribute('aria-label', `${st.key} ${fmt(dd.value)}까지 찍기${ups ? `, ${ups}` : ''}`);
-        dash.removeAttribute('aria-disabled');
-        if (ups) dash.title = ups; else dash.removeAttribute('title');
-      } else {
-        // 갈 곳이 없으면 숫자 대신 이 단추의 이름(까닭은 title 과 누를 때 읽어 준다)
-        dash.querySelector('.dest').textContent = '대시';
-        dash.setAttribute('aria-label', `${st.key} 대시`);
-        setDisabled(dash, st.atCap ? '상한입니다' : D.atMax ? '최고 레벨이라 레벨업할 수 없고 포인트가 모자랍니다' : '지금은 대시할 수 없습니다');
-      }
+      const ups = st.dashOn && dd.levelUps > 0 ? `레벨업 ${fmt(dd.levelUps)}번 (LV${NB}${fmt(D.v.lv)} → ${fmt(dd.lv)})` : '';
+      const whyDash = st.dashOn ? '' : st.atCap ? '상한입니다' : D.atMax ? '최고 레벨이라 레벨업할 수 없고 포인트가 모자랍니다' : '지금은 대시할 수 없습니다';
+      part('dash', JSON.stringify([st.dashOn && dd.value, ups, whyDash]), () => {
+        const dest = dash.querySelector('.dest');
+        if (st.dashOn) {
+          setText(dest, `${fmt(dd.value)}까지`);
+          setAttr(dash, 'aria-label', `${st.key} ${fmt(dd.value)}까지 찍기${ups ? `, ${ups}` : ''}`);
+          setAttr(dash, 'aria-disabled', null);
+          setAttr(dash, 'title', ups || null);
+        } else {
+          // 갈 곳이 없으면 숫자 대신 이 단추의 이름(까닭은 title 과 누를 때 읽어 준다)
+          setText(dest, '대시');
+          setAttr(dash, 'aria-label', `${st.key} 대시`);
+          setDisabled(dash, whyDash);
+        }
+      });
     });
   }
   // aria-disabled 와 그 까닭(title, 누르면 읽어 준다)
   function setDisabled(b, why) {
-    if (why) { b.setAttribute('aria-disabled', 'true'); b.title = why; } else { b.removeAttribute('aria-disabled'); b.removeAttribute('title'); }
+    setAttr(b, 'aria-disabled', why ? 'true' : null);
+    setAttr(b, 'title', why || null);
   }
 
   // 2. 레벨 카드: 다음 레벨업이 주는 것
@@ -511,30 +548,37 @@
           nextParts.record),
         nextParts.last);
     }
-    nextParts.meta.textContent = p ? `LV${NB}${fmt(p.lv)}` : '최고 레벨';
-    const gain = (dd, dt, none) => h('div', { class: none ? 'none' : null }, h('dt', null, dt), h('dd', null, dd));
+    setText(nextParts.meta, p ? `LV${NB}${fmt(p.lv)}` : '최고 레벨');
     const gainsSig = JSON.stringify([p, D.lineSel && D.lineSel.name, v.bonus.rate, v.maxLv, D.stats.map((x) => x.atCap)]);
     if (nextParts.gains.dataset.sig === gainsSig) { /* 그대로 */ } else if (!p) {
       nextParts.gains.dataset.sig = gainsSig;
+      nextParts.gains.dataset.mode = 'done';
       put(nextParts.gains, h('div', { class: 'gains-done', style: { 'grid-column': '1 / -1' } },
         h('dt', null, '더 받을 레벨업 보상 없음'), h('dd', null, `LV${NB}${fmt(v.maxLv)}, 최고 레벨`)));
     } else {
       nextParts.gains.dataset.sig = gainsSig;
       const ln = splitLine(D.lineSel.name);
       const mi = STAT_KEYS.indexOf(ln.main), bi = STAT_KEYS.indexOf(ln.bonus);
-      const parts = [gain(`POINT +${fmt(p.point)}`, '레벨업 보상')];
+      const items = [{ dd: `POINT +${fmt(p.point)}`, dt: '레벨업 보상' }];
       if (mi >= 0) {
         const n = p.stats[mi];
-        parts.push(n ? gain(`${ln.main} +${n}`, `${ln.line} · 매 레벨`) : gain(`${ln.main} +0`, D.stats[mi].atCap ? `${ln.line} · 상한` : `${ln.line} · 매 레벨`, true));
+        items.push(n ? { dd: `${ln.main} +${n}`, dt: `${ln.line} · 매 레벨` } : { dd: `${ln.main} +0`, dt: D.stats[mi].atCap ? `${ln.line} · 상한` : `${ln.line} · 매 레벨`, none: true });
       }
       if (bi >= 0) {
         const n = p.stats[bi];
         // 보너스는 난수가 아니라 정해져 있다: 이번 레벨업에 받는지 엔진의 preview가 알려 준다
-        parts.push(p.bonus && n ? gain(`${ln.bonus} +${n}`, `보너스 받음 · ${v.bonus.rate}%`) : gain(`${ln.bonus} +0`, p.bonus ? `보너스 · 상한` : `보너스 없음 · ${v.bonus.rate}%`, true));
+        items.push(p.bonus && n ? { dd: `${ln.bonus} +${n}`, dt: `보너스 받음 · ${v.bonus.rate}%` } : { dd: `${ln.bonus} +0`, dt: p.bonus ? `보너스 · 상한` : `보너스 없음 · ${v.bonus.rate}%`, none: true });
       }
-      put(nextParts.gains, ...parts);
+      // 칸 수가 같으면 글자만 고친다(레벨업마다 세 칸을 새로 짓지 않게)
+      const cur = nextParts.gains.children;
+      if (nextParts.gains.dataset.mode === 'items' && cur.length === items.length) {
+        items.forEach((it, i) => { const div = cur[i]; div.classList.toggle('none', !!it.none); setText(div.children[0], it.dt); setText(div.children[1], it.dd); });
+      } else {
+        nextParts.gains.dataset.mode = 'items';
+        put(nextParts.gains, ...items.map((it) => h('div', { class: it.none ? 'none' : null }, h('dt', null, it.dt), h('dd', null, it.dd))));
+      }
     }
-    if (document.activeElement !== bonusInput) bonusInput.value = v.bonus.rate;
+    if (document.activeElement !== bonusInput && bonusInput.value !== String(v.bonus.rate)) bonusInput.value = v.bonus.rate;
     // 끝(0%, 100%)에 닿은 −/+ 는 aria-disabled 로 끈다: disabled 로 끄면 그 단추에 있던 초점이 <body>로 떨어진다.
     // 누르면 까닭을 읽어 준다(문서의 click 처리기)
     setDisabled(stepDown, v.bonus.rate <= 0 ? '보너스는 0%보다 낮출 수 없습니다' : '');
@@ -578,7 +622,12 @@
       if (focused) { const c = list.querySelector('input:checked') || list.querySelector('input'); if (c) c.focus(); }
     }
     const n = v.xien.lines.filter((l) => l.selectable).length;
-    $('#xien-meta').textContent = n === v.xien.lines.length ? `지금 ${n}개 선택 가능` : `${v.xien.lines.length}개 중 ${n}개 선택 가능`;
+    setText($('#xien-meta'), n === v.xien.lines.length ? `지금 ${n}개 선택 가능` : `${v.xien.lines.length}개 중 ${n}개 선택 가능`);
+    // 고를 수 있는 줄과 고른 줄이 그대로면 줄들도 그대로(라디오의 checked 는 사람이 누르면 바뀌므로 그때는 열쇠와 상관없이 맞춘다)
+    const linesSig = `${v.xien.selected}|${v.xien.lines.map((l) => (l.selectable ? 1 : 0)).join('')}`;
+    const checked = list.querySelector('input:checked');
+    if (list.dataset.sig === linesSig && checked && +checked.value === v.xien.selected) return;
+    list.dataset.sig = linesSig;
     for (const l of v.xien.lines) {
       const opt = list.querySelector(`.xien-opt[data-x="${l.x}"]`);
       const input = opt.querySelector('input');
@@ -648,6 +697,7 @@
   }
   let prevLogKeys = null;
   let logRows = new Map();   // 지난번에 그린 로그 줄(열쇠 → <tr>): 바뀌지 않은 줄은 그대로 두고 바뀐 줄만 새로 짓는다
+  let sumView = null;        // 마지막 두 줄의 짜임과 그 숫자 칸들
   function renderLog(D) {
     const rows = D.log;
     const keys = logKeys(rows);
@@ -680,9 +730,16 @@
     want.forEach((tr, i) => { if (body.children[i] !== tr) body.insertBefore(tr, body.children[i] || null); });
     while (body.children.length > want.length) body.lastElementChild.remove();
     logRows = next;
-    const sumSig = JSON.stringify([D.footer, D.summary]);
-    if (el.logSum.dataset.sig !== sumSig) { el.logSum.dataset.sig = sumSig; put(el.logSum, ...sumNodes(D.footer, D.summary)); }
-    el.logSum.hidden = !(D.footer || D.summary);
+    // 마지막 두 줄: 짜임(누구, 스탯 이름)이 같으면 숫자만 고친다
+    const f = D.footer, s = D.summary;
+    const sumKey = JSON.stringify([f && [f.char, f.type], s && s.stats.map((x) => x[0])]);
+    const sumVals = [...(f ? [`${fmt(f.achieved)} / ${fmt(f.levelUps)}`, fmt(f.point)] : []), ...(s ? [fmt(s.lv), ...s.stats.map((x) => fmt(x[1]))] : [])];
+    if (!sumView || sumView.key !== sumKey) {
+      put(el.logSum, ...sumNodes(f, s));
+      sumView = { key: sumKey, figs: $$('.sum-figs b, .sum-stats b', el.logSum) };
+    }
+    sumVals.forEach((t, i) => { if (sumView.figs[i]) setText(sumView.figs[i], t); });
+    el.logSum.hidden = !(f || s);
     // 원본처럼 로그는 끝(방금 한 조작과 마지막 두 줄)이 보이게 내려 둔다. 끝으로 내리기는 render 끝에서 한 번
     if (changed) D.logMoved = true;
     const firstLv = D.lvRows.length ? D.lvRows[0].from : D.v.startLv;
@@ -772,15 +829,16 @@
   }
 
   // 기록 버튼(상단 바와 아래쪽 바): 되돌릴 것, 다시 할 것, 최고 레벨
+  const histButtons = { undo: $$('[data-act="undo"]'), redo: $$('[data-act="redo"]'), levelUp: $$('[data-act="levelUp"]') };
   function renderHistory(D) {
     const { v } = D;
     const why = { undo: v.canUndo ? '' : '되돌릴 조작이 없습니다', redo: v.canRedo ? '' : '다시 실행할 조작이 없습니다', levelUp: D.atMax ? '최고 레벨입니다' : '' };
-    $('#undo-why').textContent = why.undo; $('#redo-why').textContent = why.redo; $('#levelup-why').textContent = why.levelUp;
-    for (const [act, keys] of [['undo', '← (⇧: 한 레벨씩)'], ['redo', '→ (⇧: 한 레벨씩)'], ['levelUp', 'L']]) {
-      for (const b of $$(`[data-act="${act}"]`)) {
-        if (why[act]) { b.setAttribute('aria-disabled', 'true'); b.setAttribute('aria-describedby', `${act === 'levelUp' ? 'levelup' : act}-why`); }
-        else { b.removeAttribute('aria-disabled'); b.removeAttribute('aria-describedby'); }
-        b.title = why[act] ? `${why[act]} · ${keys}` : `${{ undo: '되돌리기', redo: '다시 실행', levelUp: '레벨업' }[act]} · ${keys}`;
+    setText($('#undo-why'), why.undo); setText($('#redo-why'), why.redo); setText($('#levelup-why'), why.levelUp);
+    for (const [act, keys] of [['undo', '← (⇧: 대시 단위)'], ['redo', '→ (⇧: 대시 단위)'], ['levelUp', 'L']]) {
+      for (const b of histButtons[act]) {
+        setAttr(b, 'aria-disabled', why[act] ? 'true' : null);
+        setAttr(b, 'aria-describedby', why[act] ? `${act === 'levelUp' ? 'levelup' : act}-why` : null);
+        setAttr(b, 'title', why[act] ? `${why[act]} · ${keys}` : `${{ undo: '되돌리기', redo: '다시 실행', levelUp: '레벨업' }[act]} · ${keys}`);
       }
     }
   }
@@ -847,26 +905,49 @@
   // ==========================================================================
   let E = null;
   let broken = false;          // 엔진이 예외를 던졌다(엔진의 버그). 그 뒤로는 저장하지 않는다: 새로 고침하면 저장된 계획으로
+  // 필요 포인트와 초록 숫자(비용이 오르는 값)가 옛 값으로 남은 상태인가. 원본 핸들러가 중간에 멈추면(엔진의 결과에 error: true,
+  // 예: 'Bonus :75%' 줄이 든 로그) 원본의 updateStatus() 가 돌지 못해 그 숫자들이 앞 상태의 것으로 남는다. 다음에 updateStatus()
+  // 를 도는 조작(받아들여진 레벨업·+1·대시·되돌리기·다시 실행·스탯 편집, 새 계획, 받아들여지지 않은 ←/→/대시)에서 바로잡히고,
+  // 설정(보너스, 주력 계열)은 그것을 돌지 않는다. 그동안 화면은 그 숫자로 셈한 말을 하지 않는다(derive 의 staleSteps)
+  let costsStale = false;
   const STAT_I = [0, 1, 2, 3, 4, 5, 6];
   // 스탯 편집 창의 값(editOpen)은 창을 열 때만 묻는다
-  const buildModel = () => ({ view: E.view(), preview: E.preview(), dash: STAT_I.map((i) => E.previewDash(i)), log: E.exportLog(), guide: E.guide() });
+  const buildModel = () => ({ view: E.view(), preview: E.preview(), dash: STAT_I.map((i) => E.previewDash(i)), log: E.exportLog(), guide: E.guide(), stale: costsStale });
+  // 엔진 e 의 상태가 updateStatus() 를 거치지 못한 채인지 엔진에 묻는다: 사본에서 아무것도 하지 않는 조작(다시 실행할 것이 없을
+  // 때의 →, 되돌릴 것이 없을 때의 ←)을 하면 원본처럼 updateStatus() 만 돈다. 그때 필요 포인트나 초록 숫자가 바뀌면 지금 숫자는
+  // 옛 값이다. 둘 다 할 일이 있으면(그 상태에서는 생기지 않는다) 묻지 못한다: false. saved: 이미 가진 e 의 serialize() 결과
+  function probeStale(e, saved) {
+    try {
+      const v = e.view();
+      if (v.canRedo && v.canUndo) return false;
+      const C = Oresim.createEngine(saved || e.serialize());
+      if (!v.canRedo) C.redo(); else C.undo();
+      const w = C.view();
+      return w.stats.some((st, i) => !Object.is(st.cost, v.stats[i].cost) || !Object.is(st.nextStepAt, v.stats[i].nextStepAt));
+    } catch (_) { return false; }
+  }
   // 붙여넣은 로그를 지금 계획의 사본에서 먼저 읽어 본다(지금 계획은 그대로). { engine, r }
   function tryImport(text) {
     const C = Oresim.createEngine(E.serialize());
     return { engine: C, r: C.importLog(text) };
   }
-  // 공유 링크의 계획을 새 엔진에 만든다: 로그를 읽고, 로그에 남지 않는 마지막 설정(보너스, 주력 계열)을 얹는다. 못 읽으면 null
+  // 공유 링크의 계획을 새 엔진에 만든다: 로그를 읽고, 로그에 남지 않는 마지막 설정(보너스, 주력 계열)을 얹는다. 못 읽으면 null.
+  // 알려진 예외 하나: 조작 0회인 계획(처음까지 되돌린 계획 등)의 로그 첫머리 'Bonus' 줄은 원본이 기록 맨 앞 칸에 써 둔 값이라
+  // (보너스를 바꾸고 레벨업한 뒤 되돌린 값이 남는다) 받는 쪽에서 같은 글로 다시 만들 수 없다. 받는 쪽의 보너스는 b 로 같아지고,
+  // 로그 글은 그 줄만 다를 수 있다(원본도 같다: 그 로그를 읽고 보너스를 맞추면 첫머리가 지금 보너스가 된다)
   function linkCandidate(data) {
     const C = Oresim.createEngine();
-    if (!C.importLog(data.log).ok) return null;
+    const r = C.importLog(data.log);
+    if (!r.ok) return null;
     if (typeof data.b === 'number') C.setBonus(data.b);
     if (typeof data.x === 'number') C.setXien(data.x);           // 지금 고를 수 없는 계열이면 그대로 둔다
-    return { engine: C, r: { ok: true, sound: null } };
+    return { engine: C, r: { ok: true, sound: null }, stale: !!r.error && probeStale(C) };
   }
-  // 후보 엔진으로 바꾼다(읽어 본 결과 그대로 돌려준다)
+  // 후보 엔진으로 바꾼다(읽어 본 결과 그대로 돌려준다). 후보의 불러오기가 중간에 멈췄으면 비용 단계가 옛 값인지 묻는다
   function adopt(cand) {
     if (!cand || !cand.r || !cand.r.ok) return cand ? cand.r : { ok: false, sound: null };
     E = cand.engine;
+    costsStale = cand.stale != null ? !!cand.stale : !!cand.r.error && probeStale(E);
     return cand.r;
   }
   // 버리면 아까운 계획인가: 조작이 하나라도 있거나, 되돌려 둔 조작(다시 실행할 것)이 있거나, 스탯 편집으로 시작한 계획
@@ -892,7 +973,7 @@
       default: return [];
     }
   };
-  // 조작 → 엔진. 결과는 모두 { ok, sound, … }(contract.md). 로그 불러오기·공유 링크는 미리 읽어 본 후보를 넘겨받는다
+  // 조작 → 엔진. 결과는 모두 { ok, sound, … }(CLAUDE.md '웹판 > 엔진'의 API). 로그 불러오기·공유 링크는 미리 읽어 본 후보를 넘겨받는다
   const ENGINE_ACTS = {
     levelUp: () => E.levelUp(),
     statUp: (i) => E.statUp(i),
@@ -932,12 +1013,15 @@
   function redraw(ctx) {
     try { render(buildModel(), ctx || {}); return true; } catch (err) { engineFailed(err); return false; }
   }
-  // 엔진의 상태가 화면에 그린 것과 다를 때만 다시 그리고 저장한다(받아들이지 않은 조작 뒤)
+  // 엔진의 상태가 화면에 그린 것과 다를 때만 다시 그리고 저장한다(받아들이지 않은 조작 뒤). 받아들이지 않은 조작이 상태를 바꿨다면
+  // 원본의 updateStatus() 가 돈 것이다(←/→/대시): 옛 값으로 남았던 비용 단계도 그때 바로잡혔다
   function refreshIfChanged(ctx) {
     let m;
     try { m = buildModel(); } catch (err) { engineFailed(err); return; }
     if (model && m.log === model.log && m.guide === model.guide
       && JSON.stringify([m.view, m.preview, m.dash]) === JSON.stringify([model.view, model.preview, model.dash])) return;
+    costsStale = false;
+    m.stale = false;
     try { render(m, ctx); } catch (err) { engineFailed(err); return; }
     planChanged();
   }
@@ -973,6 +1057,11 @@
     // 다른 부분(검사 스크립트 등)이 들을 수 있게 알린다
     document.dispatchEvent(new CustomEvent('oresim:action', { detail: { act, args, ok: !!r.ok } }));
     if (!run) return r;
+    // 비용 단계가 옛 값으로 남았는가(costsStale): 원본 핸들러가 중간에 멈췄으면 엔진에 묻고, updateStatus() 를 도는 조작을
+    // 받아들였으면 바로잡혔다. 설정(보너스, 주력 계열)은 그대로 둔다. 불러오기·공유 링크는 후보를 받을 때(adopt) 정했다
+    if (act === 'importLog' || act === 'openShared') { if (threw) costsStale = probeStale(E); }
+    else if (threw || r.error) costsStale = probeStale(E);
+    else if (r.ok && !SETTING_ACTS.has(act)) costsStale = false;
     if (threw) { redraw({ newPlan: true }); return r; }               // 무엇이 바뀌었는지 모르므로 움직임 없이 다시 그린다
     const keepMarks = { prev: lastD && lastD.prev, last: lastD && lastD.last };
     if (!r.ok && !r.error) {
@@ -1114,22 +1203,32 @@
   // ---------- 확인 창: 계획을 지우는 전환과 공유 링크 ----------
   const confirmDlg = $('#confirm');
   let confirmGo = null, confirmCancel = null;
+  let confirmKind = '';        // 지금 확인 창이 묻는 것: 'link'(공유 링크) 또는 ''(그 밖)
+  const confirmShown = () => confirmDlg.open && !confirmDlg.classList.contains('is-closing');
+  // 공유 링크를 묻는 확인 창이 떠 있다(닫히는 중이 아니다): 새 링크가 오면 그 물음을 새 링크의 것으로 바꾼다
+  const askingLink = () => confirmKind === 'link' && confirmShown();
   function ask(opts) {
-    // 확인 창이 이미 열려 있으면(닫히는 중 포함) 그 창의 글과 처리기를 덮어쓰지 않고, 닫힌 뒤에 묻는다
-    if (confirmDlg.open) { confirmDlg.addEventListener('close', () => setTimeout(() => ask(opts), 0), { once: true }); return; }
-    const { title, desc, go = '바꾸기', cancel = '취소', onGo, onCancel, from, single = false } = opts;
+    const { title, desc, go = '바꾸기', cancel = '취소', onGo, onCancel, from, single = false, kind = '' } = opts;
+    // 확인 창이 이미 열려 있으면(닫히는 중 포함) 그 창의 글과 처리기를 덮어쓰지 않고, 닫힌 뒤에 묻는다. 다만 앞 링크를 묻는 창에
+    // 새 링크가 오면(주소창에 다른 링크를 붙여넣었다) 그 자리에서 새 링크의 물음으로 바꾼다: 앞 링크는 이제 주소창의 링크가 아니다
+    const replace = kind === 'link' && askingLink();
+    if (confirmDlg.open && !replace) { confirmDlg.addEventListener('close', () => setTimeout(() => ask(opts), 0), { once: true }); return; }
     $('#confirm-title').textContent = title;
     put($('#confirm-desc'), ...[].concat(desc));
     $('#confirm-go').textContent = go;
     $('#confirm-cancel').textContent = cancel;
     $('#confirm-cancel').hidden = single;
-    confirmGo = onGo || null; confirmCancel = onCancel || null;
-    openDialog(confirmDlg, from);
+    confirmGo = onGo || null; confirmCancel = onCancel || null; confirmKind = kind;
+    if (replace) announce(`${title} ${$('#confirm-desc').textContent}`);   // 같은 창에서 글만 바뀌었다
+    else openDialog(confirmDlg, from);
   }
+  // 앞 링크를 묻던 창을 아무 일 없이 닫는다(새 링크가 지금 계획과 같거나, 묻지 않고 열 때)
+  const dropLinkAsk = () => { if (!askingLink()) return; confirmGo = confirmCancel = null; closeDialog(confirmDlg, 'cancel'); };
   confirmDlg.addEventListener('close', () => {
     const go = confirmDlg.returnValue === 'go';
     const fn = go ? confirmGo : confirmCancel;
     confirmGo = confirmCancel = null;
+    confirmKind = '';
     if (fn) setTimeout(fn, 0);
   });
   // 지울 계획의 이름: 캐릭터/타입, 지금 LV. 되돌려 둔 조작이 있으면 그것도 함께 지워진다고 말한다(처음까지 되돌린 계획은 LV 1 이지만
@@ -1217,7 +1316,7 @@
   editDlg.addEventListener('close', () => {
     if (editDlg.returnValue !== 'apply' || !editData) return;
     if (editFor !== E) { editData = null; return; }                       // 창이 열린 동안 다른 계획이 되었다
-    // 칸의 글자는 원본의 칸에 친 것처럼 엔진에 넘긴다(반올림과 범위 맞춤은 엔진이 한다, contract.md editCommit):
+    // 칸의 글자는 원본의 칸에 친 것처럼 엔진에 넘긴다(반올림과 범위 맞춤은 엔진의 editCommit 이 한다):
     // 빈 칸은 '' → 스테퍼 칸은 최솟값(원본 Flex 의 NumericStepper 처럼), 계열 레벨은 0. 숫자로 읽을 수 없는 글자(브라우저가 badInput
     // 으로 알린다)는 NaN → 스테퍼 칸은 그대로, 계열 레벨은 0
     const typed = (name) => {
@@ -1251,9 +1350,9 @@
   }
   function syncTabs() {
     const guide = isGuide();
-    $('#rail-meta').textContent = guide ? railMeta.guide : railMeta.log;
+    setText($('#rail-meta'), guide ? railMeta.guide : railMeta.log);
     const copy = $('#copy');
-    copy.setAttribute('aria-label', guide ? '육성 가이드 텍스트 복사' : '재분배 로그 복사');
+    setAttr(copy, 'aria-label', guide ? '육성 가이드 텍스트 복사' : '재분배 로그 복사');
     setDisabled(copy, guide && !model.guide ? '복사할 육성 가이드가 없습니다' : '');
   }
   function selectTab(tab, focusIt) {
@@ -1321,11 +1420,28 @@
     }
     return `#t=${toB64url(bytes)}`;
   }
-  // 링크로 받는 계획의 크기 한도. 진짜 계획은 로그가 길어야 수백 줄(약 20KB)이고 링크도 그 안이다. 일부러 만든 거대한 링크는
-  // 읽는 데 몇 초씩 탭을 멈추므로(그동안 주소창에 남아 새로 고쳐도 되풀이된다) 넘으면 읽지 않는다
+  // 링크로 받는 계획의 크기 한도. 진짜 계획은 로그가 길어야 900줄 남짓(LV 285 까지 레벨마다 보너스와 주력 계열을 바꿔도, 약 20KB)
+  // 이고 링크도 그 안이다. 일부러 만든 거대한 링크는 풀고 읽는 데만 탭을 붙잡으므로 넘으면 읽지 않는다
   const LINK_MAX = { payload: 400000, bytes: 262144, lines: 2000 };
   // 링크를 읽지 못한 까닭: 'nodeflate' 압축을 풀 수 없는 브라우저, 'big' 너무 큼, 그 밖(잘림, 손상, 다른 형식)
   class LinkError extends Error { constructor(kind) { super(kind); this.kind = kind; } }
+  // 링크의 로그가 이 시뮬레이터가 쓴 모양인가: 엔진이 읽는 Status 줄(스탯 편집으로 시작한 계획)은 하나뿐이고, 그 LV 와 일곱 스탯이
+  // 스탯 편집 창의 범위(1~285) 안이다. 링크는 언제나 이 시뮬레이터의 재분배 로그(exportLog)를 담으므로 그렇다. 손으로 만든 글은
+  // Status 줄을 여러 번 두거나 음수 LV·스탯을 넣어 엔진이 작업 한도까지 몇 초씩 일하게 할 수 있다: 그런 링크는 읽지 않는다(붙여넣은
+  // 로그는 원본처럼 그대로 읽는다). 줄을 가르는 법은 엔진의 것(맨 앞 공백, 전각 콜론·쉼표·하이픈, 값 78개 또는 46개)을 따른다
+  function linkLogOk(log) {
+    const inRange = (x, max) => /^\d+$/.test(x) && +x >= 1 && +x <= max;
+    let n = 0;
+    for (const raw of lines(log)) {
+      const m = raw.replace(/\uFF1A/g, ':').replace(/\uFF0C/g, ',').replace(/\uFF0D/g, '-').match(/^ *Status(?: [^:]*)?:([^:]*)/);
+      if (!m) continue;
+      const a = m[1].replace(/ /g, '').split(',');
+      if (a.length !== 78 && a.length !== 46) continue;                 // 엔진도 Status 줄로 읽지 않는다
+      if (++n > 1) return false;
+      if (!inRange(a[0], CONST.MAX_LEVEL) || !STAT_I.every((i) => inRange(a[6 + i], CONST.MAX_STATUS[i]))) return false;
+    }
+    return true;
+  }
   // '#p=…' / '#t=…' → { v, log, b, x }. 못 읽으면 LinkError 또는 다른 예외
   async function decodePlan(kind, payload) {
     if (payload.length > LINK_MAX.payload) throw new LinkError('big');
@@ -1340,7 +1456,8 @@
     if (bytes.length > LINK_MAX.bytes) throw new LinkError('big');
     const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
     if (!data || data.v !== 1 || typeof data.log !== 'string') throw new LinkError('format');
-    if (data.log.split('\n').length > LINK_MAX.lines) throw new LinkError('big');
+    if (lines(data.log).length > LINK_MAX.lines) throw new LinkError('big');      // 엔진처럼 \r 도 줄바꿈으로 센다
+    if (!linkLogOk(data.log)) throw new LinkError('format');
     return data;
   }
   /** shareLink() — 지금 계획의 공유 링크(Promise<string>): 이 페이지 주소(# 앞) + '#p=…' */
@@ -1581,7 +1698,7 @@
     [SHORTCUT.map(kb), `${STAT_KEYS[0]} … ${STAT_KEYS[6]} +1`],
     [[kb('⇧'), '+ 스탯 키'], '대시: 비용이 오르는 값까지 찍기'],
     [[kb('←'), kb('→')], '되돌리기 · 다시 실행'],
-    [[kb('⇧'), '+', kb('←'), kb('→')], '한 레벨씩 되돌리기 · 다시 실행'],
+    [[kb('⇧'), '+', kb('←'), kb('→')], '대시 단위로 되돌리기 · 다시 실행'],
     [[kb('↑'), kb('↓')], '주력 계열 · 탭 · 효과음 크기 바꾸기'],
     [[kb('G')], '재분배 로그 · 육성 가이드 전환'],
     [[kb('P')], '로그 불러오기'],
@@ -1784,9 +1901,10 @@
     try { history.replaceState(null, '', location.href.split('#')[0]); } catch (_) { /* 그대로 둔다 */ }
   };
   // 계획이 바뀌었다: 저장을 예약하고, 주소창에 남은 지난 공유 링크(복사가 막혀 넣어 둔 것)는 이제 이 계획이 아니므로 지운다
+  // 다만 읽거나 묻는 중인 공유 링크(linkPending)는 답할 때까지 둔다(대화상자 뒤에서 기다리는 동안 스탯 편집을 적용한 경우 등)
   function planChanged() {
     scheduleSave();
-    if (/^#[pt]=/.test(location.hash)) clearHash();
+    if (/^#[pt]=/.test(location.hash) && location.hash !== linkPending) clearHash();
   }
 
   // ==========================================================================
@@ -1796,19 +1914,23 @@
   // 창이 앞 계획의 값을 새 계획에 적용하지 않게
   // ==========================================================================
   let linkSeq = 0;
+  let linkPending = '';      // 지금 읽거나 묻는 중인 링크(주소의 # 그대로). 물음에 답하면(done) 비운다
   // 링크의 # 뒤: 'p'(압축) 또는 't' 와 base64url 글자. 그 뒤에 붙은 것(채팅에서 문장 끝의 링크를 복사하면 딸려 오는 '.', ')' 등)은
   // 읽지 않는다. base64url 에는 그런 글자가 없으므로 앞의 글자만으로 링크 전부다
   const LINK_RE = /^#([pt])=([A-Za-z0-9_-]+)/;
-  // 열린 대화상자가 있으면 닫힌 뒤에 다시 연다(그사이 다른 링크가 들어오면 그것만)
+  // 열린 대화상자가 있으면 닫힌 뒤에 다시 연다(그사이 다른 링크가 들어오면 그것만). 앞 링크를 묻는 확인 창은 기다리지 않는다:
+  // 새 링크의 물음으로 바꾼다(ask)
   function deferLink(hash, seq, at) {
     const busy = $$('dialog').find((d) => d.open);
-    if (!busy) return false;
+    if (!busy || (busy === confirmDlg && askingLink())) return false;
     busy.addEventListener('close', () => setTimeout(() => { if (seq === linkSeq) openLinkFromHash(hash, at); }, 0), { once: true });
     return true;
   }
   // 링크를 읽지 못했을 때의 말: 까닭과, 그래서 무엇을 보여 주는지(시작할 때 저장된 계획을 되살렸는지, 새 계획인지, 쓰던 중인지)
   function linkFailWords(why, at) {
-    const head = why === 'nodeflate' ? '이 브라우저는 압축된 링크를 열 수 없습니다. 브라우저를 업데이트하거나 다른 브라우저에서 여세요.' : '링크가 잘렸거나 손상되었습니다.';
+    const head = why === 'nodeflate' ? '이 브라우저는 압축된 링크를 열 수 없습니다. 브라우저를 업데이트하거나 다른 브라우저에서 여세요.'
+      : why === 'big' ? '링크에 담긴 로그가 너무 길어 읽지 않았습니다. 이 시뮬레이터에서 만든 링크인지 확인하세요.'
+        : '링크가 잘렸거나 손상되었습니다.';
     const tail = at === 'saved' ? '이 브라우저에 저장된 계획을 그대로 엽니다.' : at === 'fresh' ? '새 계획으로 시작합니다.' : '지금 계획을 그대로 둡니다.';
     return `${head} ${tail}`;
   }
@@ -1818,18 +1940,21 @@
     at = typeof at === 'string' ? at : '';
     if (!/^#[pt]=/.test(hash)) return;
     const seq = ++linkSeq;
+    linkPending = hash;
     if (deferLink(hash, seq, at)) return;
     const m = hash.match(LINK_RE);
     let data = null;
     let why = 'broken';
     let cand = null;
-    try { data = m ? await decodePlan(m[1], m[2]) : null; } catch (err) { data = null; if (err && err.kind === 'nodeflate') why = 'nodeflate'; }
+    try { data = m ? await decodePlan(m[1], m[2]) : null; } catch (err) { data = null; if (err && (err.kind === 'nodeflate' || err.kind === 'big')) why = err.kind; }
     if (seq !== linkSeq) return;                                          // 그사이 다른 링크가 들어왔다
     if (deferLink(hash, seq, at)) return;                                 // 읽는 사이 대화상자가 열렸다
+    // 주소창의 링크는 물음에 답할 때까지 둔다: 묻는 동안 새로 고치거나 탭을 다시 열어도 같은 링크를 다시 묻는다. 링크의 로그는
+    // 이 시뮬레이터가 쓴 모양만 받으므로(decodePlan, linkLogOk) 다시 읽어도 금방 끝난다
+    const done = () => { if (linkPending === hash) linkPending = ''; clearHash(hash); };
     if (data) { try { cand = linkCandidate(data); } catch (_) { cand = null; } }
-    const done = () => clearHash(hash);
     if (!cand) {
-      ask({ title: '링크의 계획을 읽지 못했습니다', desc: linkFailWords(why, at), go: '확인', single: true, onGo: done, onCancel: done });
+      ask({ title: '링크의 계획을 읽지 못했습니다', desc: linkFailWords(why, at), go: '확인', single: true, onGo: done, onCancel: done, kind: 'link' });
       return;
     }
     let cv, v, same;
@@ -1838,15 +1963,16 @@
       v = E.view();
       same = cand.engine.exportLog() === E.exportLog() && cv.bonus.rate === v.bonus.rate && cv.xien.selected === v.xien.selected;
     } catch (err) { engineFailed(err); done(); return; }
-    if (same) { done(); return; }                                         // 같은 계획
+    if (same) { dropLinkAsk(); done(); return; }                          // 같은 계획
     const open = () => { done(); dispatch('openShared', data, cand); announce('링크의 계획을 열었습니다.'); };
-    if (!hasWork(v)) { open(); return; }
+    if (!hasWork(v)) { dropLinkAsk(); open(); return; }
     ask({
       title: '링크의 계획을 열까요?',
       desc: [`링크의 계획${WJ}(`, planName(cv.charName, cv.typeName), `, LV${NB}${fmt(cv.lv)}`, `)${WJ}을 열면 이 브라우저에 저장된 계획${WJ}(`, ...planNow(), `)${WJ}은 지워집니다. 저장된 계획도 남기려면 '저장된 계획 유지'를 누르고 먼저 그 계획의 링크를 복사하세요.`],
       go: '링크 계획 열기', cancel: '저장된 계획 유지',
       onGo: open,
       onCancel: () => { done(); dispatch('keepSaved'); },
+      kind: 'link',
     });
   }
 
@@ -1881,10 +2007,12 @@
     let drawn = false;
     if (got) {
       E = got.engine;
+      // 저장한 때가 중간에 멈춘 불러오기 바로 뒤였으면 비용 단계가 옛 값인 채로 저장되었다: 엔진에 묻는다(되살린 그 상태에서)
+      costsStale = probeStale(E, got.rebuilt ? null : saved.engine);
       try { render(buildModel()); drawn = true; } catch (_) { drawn = false; }
     }
     if (!drawn) {
-      try { E = Oresim.createEngine(); render(buildModel()); } catch (err) {
+      try { E = Oresim.createEngine(); costsStale = false; render(buildModel()); } catch (err) {
         console.error('나만의 재분배 시뮬레이터: 엔진을 시작하지 못했습니다', err);
         note('error', '계산 엔진을 시작하지 못했습니다. 새로 고침해 보세요.');
         return;

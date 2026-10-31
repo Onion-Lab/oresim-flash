@@ -13,8 +13,10 @@
   --active: #e2eaee;          /* 중립 알약 */
   --border: #e1e7ea;          /* 시트와 카드의 가장자리: 둘 다 같은 굵기 */
   --rule: #edf1f3;            /* 표 안의 줄 */
-  --control: #cbd5da;         /* 입력란과 테두리 버튼 */
-  --control-strong: #b3c1c8;  /* 가리켰을 때의 테두리 */
+  --control: #cbd5da;         /* 테두리 버튼(글자를 넣는 칸은 --field-line), 못 쓰는 칸 */
+  --control-strong: #b3c1c8;  /* 테두리 버튼을 가리켰을 때 */
+  --field-line: #808f98;      /* 글자를 넣는 칸의 테두리: 붙여넣은 로그, 보너스, 스탯 편집, 휴대폰의 주력 계열. 흰 바탕 3.3:1 */
+  --field-line-strong: #66757e; /* 그 칸을 가리켰을 때: 한 단계 짙게(흰 바탕 4.8:1) */
   --text: #10181d;            /* 바다 잉크, 흰 바탕에서 17.9:1 */
   --muted: #55626a;           /* 흰 바탕 6.3:1, 틀 위 5.5:1 */
   --faint: #64717a;           /* 흰 바탕 5.0:1, 틀 위에는 쓰지 않는다 */
@@ -382,7 +384,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 .gains-done { color: var(--text); }
 .bonus-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 14px; }
 .bonus-row > label { font-weight: 500; }
-.stepper { display: inline-flex; align-items: center; height: var(--control-height); border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--surface); }
+.stepper { display: inline-flex; align-items: center; height: var(--control-height); border: 1px solid var(--field-line); border-radius: var(--radius-control); background: var(--surface); }
 .stepper button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text); transition: background-color var(--t-hover) ease, transform var(--t-press) var(--ease-out); }
 .stepper button svg { width: 12px; height: 12px; }
 @media (hover: hover) and (pointer: fine) { .stepper button:not(:disabled, [aria-disabled="true"]):hover { background: var(--ground); } }
@@ -457,7 +459,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 .pop strong svg { width: 14px; height: 14px; flex: none; color: var(--positive); }
 .pop.fail strong svg { color: var(--negative); }
 .pop.show { opacity: 1; transform: none; pointer-events: auto; visibility: visible; transition-delay: 0s; }
-.pop textarea { display: block; width: 100%; height: 72px; margin-top: 8px; padding: 6px 8px; border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--raised); color: var(--text); font-size: var(--fs-small); line-height: 16px; resize: none; }
+.pop textarea { display: block; width: 100%; height: 72px; margin-top: 8px; padding: 6px 8px; border: 1px solid var(--field-line); border-radius: var(--radius-control); background: var(--raised); color: var(--text); font-size: var(--fs-small); line-height: 16px; resize: none; }
 
 .tabpanel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .tabpanel[hidden] { display: none; }
@@ -503,13 +505,13 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 .loader-label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: var(--text); font-weight: 500; }
 .loader-label .hint { color: var(--muted); font-size: var(--fs-small); font-weight: 400; }
 .loader textarea {
-  display: block; width: 100%; height: 38px; min-height: 38px; padding: 9px 10px 8px; border: 1px solid var(--control); border-radius: var(--radius-control);
+  display: block; width: 100%; height: 38px; min-height: 38px; padding: 9px 10px 8px; border: 1px solid var(--field-line); border-radius: var(--radius-control);
   background: var(--surface); color: var(--text); font-size: var(--fs-small); line-height: 18px; resize: vertical;
   transition: border-color var(--t-hover) ease, height var(--t-ui) var(--ease-out);
 }
 .loader textarea::placeholder { color: var(--faint); }
 .loader textarea:focus, .loader textarea:not(:placeholder-shown) { height: 112px; }
-@media (hover: hover) and (pointer: fine) { .loader textarea:hover { border-color: var(--control-strong); } }
+@media (hover: hover) and (pointer: fine) { .loader textarea:hover { border-color: var(--field-line-strong); } }
 .loader textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
 .loader-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .loader-msg { display: flex; align-items: flex-start; gap: 6px; min-height: 0; color: var(--text); font-size: var(--fs-small); line-height: 18px; }
@@ -598,12 +600,12 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 .fld { display: grid; gap: 6px; min-width: 0; }
 .fld > span { color: var(--muted); font-size: var(--fs-small); line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fld input {
-  width: 100%; height: 38px; padding: 0 10px; border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--surface);
+  width: 100%; height: 38px; padding: 0 10px; border: 1px solid var(--field-line); border-radius: var(--radius-control); background: var(--surface);
   text-align: right; font-weight: 500; -moz-appearance: textfield; appearance: textfield; transition: border-color var(--t-hover) ease;
 }
 .fld input::-webkit-inner-spin-button, .fld input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .fld input::placeholder { color: var(--faint); }
-@media (hover: hover) and (pointer: fine) { .fld input:hover { border-color: var(--control-strong); } }
+@media (hover: hover) and (pointer: fine) { .fld input:hover { border-color: var(--field-line-strong); } }
 .fld input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
 .dialog-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 4px; }
 .dialog.confirm { width: min(440px, calc(100% - 32px)); }
@@ -845,13 +847,18 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
   .srow.focus { padding: 8px; }
   .s-act .btn { height: 44px; padding: 0; justify-content: center; }
   .s-act .up, .s-act .dash { width: auto; }
-  .s-act .dash { gap: 4px; }
+  .s-act .dash { gap: 0 4px; }
+  /* 목적지와 키 표시가 한 줄에 들지 않으면(좁은 창의 세 자리 'N까지', 글자 간격을 넓혔을 때) 키 표시는 줄어들지 않고 목적지 아래
+     줄로 내려간다. 두 줄도 44px 단추 안이라 글자가 단추 밖으로 나가지 않는다. 아래쪽 바의 레벨업 단추도 같다 */
+  .s-act .dash, .actionbar .ab-up { flex-wrap: wrap; align-content: center; row-gap: 0; height: auto; min-height: 44px; }
+  .s-act kbd, .actionbar .ab-up kbd { flex: none; }
   .stepper { height: 46px; }
   .stepper button { width: 44px; height: 44px; }
   .stepper input { height: 44px; }
   .xien-list { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 8px; row-gap: 8px; }
-  .xien-opt { min-height: 44px; margin: 0; padding: 0 10px; border: 1px solid var(--control); }
+  .xien-opt { min-height: 44px; margin: 0; padding: 0 10px; border: 1px solid var(--field-line); }
   .xien-opt:has(input:checked) { border-color: var(--accent); }
+  .xien-opt:has(input:disabled) { border-color: var(--control); }   /* 지금 고를 수 없는 칸은 옅은 테두리 그대로 */
   .log-tools .btn, .loader .btn { height: 44px; }
   .loader-actions .btn { flex: 1; }
   .gear summary { min-height: 44px; }
@@ -894,6 +901,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
   .ab-read { margin-right: 0; }
   .ab-hist { width: 52px; }
   .ab-word { letter-spacing: -0.03em; }   /* 52px 단추: 대체 글꼴의 '다시 실행'(51px)도 안쪽 50px에 한 줄로 */
+  .actionbar .ab-up { padding: 0 4px; }   /* 글은 가운데 그대로. 글자 간격을 넓혀도 '레벨업'이 단추 안에(키 표시는 아래 줄로) */
   .cell { padding: 0 8px; }
   .strip-vitals .cell-value { margin-right: -6px; }
   .strip-vitals .cell:first-child { padding-left: 0; }
@@ -902,13 +910,15 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
   .stat-card, .half { padding: 12px; }
   .wordmark { display: none; }
 }
-/* 좁은 창이라도 정밀한 포인터(마우스)면 키 표시가 보이므로, 대시 단추가 그만큼 넓다 */
+/* 좁은 창이라도 정밀한 포인터(마우스)면 키 표시가 보이므로, 대시 단추가 그만큼 넓다: 세 자리 'N까지'와 가장 넓은 키(⇧X)가
+   한 줄에 든다. 칸 너비는 모든 줄이 같다(줄마다 단추가 한 열에 서게). 374px 아래에서는 자리가 없어 세 자리일 때 키 표시가 아래 줄로 */
 @media (max-width: 640px) and (pointer: fine) {
-  .srow { grid-template-columns: 52px auto minmax(0, 1fr) 60px 90px; }
+  .srow { grid-template-columns: 52px auto minmax(0, 1fr) 60px 96px; }
   .s-act .btn { padding: 0 4px; }
 }
 @media (max-width: 374px) and (pointer: fine) {
   .srow { grid-template-columns: 46px auto minmax(0, 1fr) 54px 88px; }
+  .s-act .dash { padding: 0 2px; }
 }
 /* 손가락으로 쓰는 화면(태블릿, 가로로 든 휴대폰 포함): 눌러지는 것은 모두 44px */
 @media (pointer: coarse) {

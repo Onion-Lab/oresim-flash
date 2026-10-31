@@ -20,7 +20,7 @@
  * 이 파일의 문자열 상수는 ASCII 로만 적었다(한국어 출력 문구는 \u 로 적고 옆 주석에 한국어를 달았다).
  * 서버가 다른 문자 코드로 보내도 계산과 출력이 깨지지 않게 하려는 것이다. 주석은 한국어 그대로다(주석은 깨져도 동작과 무관하다).
  *
- * 공개 API 는 phase2 계약(contract.md)을 따른다. 맞는지는 tests/engine-diff.js(원본을 헤드리스로 돌린 결과와 비교)와
+ * 공개 API 는 CLAUDE.md 의 '웹판 > 엔진' 절에 적었다. 맞는지는 tests/engine-diff.js(원본을 헤드리스로 돌린 결과와 비교)와
  * tests/engine-invariants.js 로 확인한다.
  */
 (function () {

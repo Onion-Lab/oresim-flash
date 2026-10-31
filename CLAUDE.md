@@ -2,31 +2,39 @@
 
 ## 개요
 
-- **무엇**: 테일즈위버(TalesWeaver, Softmax/Nexon) 일본 서버용 스탯 재분배 플래너 '나만의 재분배 시뮬레이터'(oresim)의 Flash PC판.
+- **무엇**: 테일즈위버(TalesWeaver, Softmax/Nexon) 일본 서버용 스탯 재분배 플래너 '나만의 재분배 시뮬레이터'(oresim)의 Flash PC판과,
+  그것을 옮긴 정적 웹판(`web/`).
   레벨별 스탯 투자 계획을 시뮬레이션하고, 텍스트 로그(재분배 로그)와 육성 가이드(투자 순서)로 출력하고, 그 로그를 다시 읽어 재현한다.
-  원래 일본어판이며, 2026-10에 UI·출력·주석을 모두 한국어로 옮겼다(아래 '한국어화').
+  원래 일본어판이며, 2026-10에 UI·출력·주석을 모두 한국어로 옮겼고(아래 '한국어화'), 같은 달 브라우저에서 도는 웹판을 더했다(아래 '웹판').
 - **출처**: 원작자 rugumaxi('루그 서버 모 막시')가 2015-10에 Apache-2.0으로 공개(사이트는 2015-11 폐쇄 예정이었음).
   이후 갱신 없음. 캐릭터 일러스트 등 게임 자산의 권리는 Softmax/Nexon에 있으며 Apache-2.0 대상이 아닐 수 있다.
-- **기술**: Flex 3(MXML 2006 네임스페이스, `mx:` 컴포넌트) + ActionScript 3, 타깃 Flash Player 10.
-  Flash 런타임 EOL로 현재 브라우저에서는 실행 불가. 빌드 스크립트·테스트·CI 없음.
+- **기술**
+  - Flash판: Flex 3(MXML 2006 네임스페이스, `mx:` 컴포넌트) + ActionScript 3, 타깃 Flash Player 10.
+    Flash 런타임 EOL로 현재 브라우저에서는 실행 불가. 빌드 스크립트 없음.
+  - 웹판: 빌드 없는 HTML/CSS/JS(모듈·npm·프레임워크 없음). 시험은 Node 22 스크립트(`tests/`)이고, 화면 시험 둘만 Playwright가 있을 때 돈다.
+  - CI 없음.
 - 코드 주석/UI 문자열은 한국어. UTF-8, LF, 탭/스페이스 혼용(주변 스타일을 따를 것).
+  추적하는 파일에는 일본어 문자(가나, 한자, 전각 문자, CJK 문장부호)를 두지 않는다. 시험에 필요하면 `\uXXXX`로 쓴다.
 
 ## 파일 구성
 
 | 경로 | 역할 |
 |---|---|
-| `oresim.mxml` | 웹판 진입점. UI 전체 정의(345×500). 이미지/사운드를 런타임에 상대경로(`image/`, `se/`)로 로드 |
+| `oresim.mxml` | Flash판 진입점(웹에 올리던 쪽). UI 전체 정의(345×500). 이미지/사운드를 런타임에 상대경로(`image/`, `se/`)로 로드 |
 | `oresim_offline.mxml` | 같은 UI. `sim.png`/`frame.png`/`c0`/mp3만 `@Embed`. Flash Builder의 `mainApplicationPath` |
-| `oresim/oresim-const.as` | 데이터 테이블(모두 `public var`). `<mx:Script source>`로 include |
+| `oresim/oresim-const.as` | 데이터 테이블(모두 `public var`). `<mx:Script source>`로 include. 웹판 `web/js/const.js`의 원본 |
 | `oresim/oresim-main.as` | 로직 전부(이벤트 핸들러, 레벨업/스탯업, 히스토리, 로그 출력·읽기, 육성 가이드) |
 | `oresim/oresim-func.as` | AS2(Flash 8) 시절 구버전. 어디서도 include되지 않는 dead code. 구 로그 포맷(46필드)의 출처 |
 | `image/`, `se/` | 자산. `html-template/` = Flex 3 기본 HTML 래퍼 |
+| `web/` | 웹판(정적 파일). 아래 '웹판' |
+| `tests/` | 웹판 시험(Node). `harness.js`가 원본 AS3를 헤드리스로 돌리는 기준이다. `tests/README.md` |
+| `tools/gen-web-const.js` | `oresim-const.as` → `web/js/const.js` 생성기 |
 
 오래된 잔재: `src/Main.mxml`(빈 Flex 4 템플릿), `oresim.as3proj`·`obj/*`(FlashDevelop 설정, 저장소에 없는 `oresim_ch.mxml` 대상),
-`.actionScriptProperties`의 `main.mxml`/`oresim_ch.mxml` 항목, 미사용 이미지(`c0~c9.png`, `dptup`, `exchange_*`, `left/right`,
-`lung`, `mxikoke`, `paste_disable`, `ptup`, `sp.swf`, `Thumbs.db`).
+`.actionScriptProperties`의 `main.mxml`/`oresim_ch.mxml` 항목, Flash판이 쓰지 않는 이미지(`c0~c9.png`(웹판은 이 사본을 쓴다), `dptup`,
+`exchange_*`, `left/right`, `lung`, `mxikoke`, `paste_disable`, `ptup`, `sp.swf`, `Thumbs.db`).
 
-## 빌드
+## 빌드(Flash판)
 
 - 원래 환경: Flash Builder + Flex SDK 3.6A, `strict="true"`, 출력 `bin/`(gitignore).
   컴파일 옵션은 `-locale en_US`다(원래 `ja_JP`). Flex 3 SDK에는 프레임워크 로캘이 en_US/ja_JP뿐이라 ko_KR은 `copylocale`로 만들어야 한다.
@@ -42,8 +50,11 @@
   스탯 편집 창)은 `fontFamily="돋움체"`(한국어 Windows의 고정폭 장치 글꼴 이름)로 바꿨다. 영문 라벨(STAB~AGI, HP/MP/SP/POINT/LV/XIEN,
   Bonus, Vol., Reset, 저작권 표시)의 Arial/Verdana는 그대로이고, 툴팁은 전역 기본 글꼴(Verdana)을 쓴다.
   장치 글꼴이라 그 이름의 글꼴이 없는 PC에서는 기본 글꼴로 바뀐다. 로그 줄 맞춤은 ASCII 고정폭에만 의존한다.
+- 웹판은 빌드가 없다. 만들어 내는 파일은 `web/js/const.js` 하나다(아래 '웹판').
 
 ## 아키텍처 핵심
+
+이 절부터 '히스토리와 로그'까지는 원본 AS3 기준이다. 웹판 엔진은 같은 함수와 컨트롤 상태를 같은 이름으로 옮겼으므로 그대로 들어맞는다.
 
 - **상태가 UI 컨트롤 텍스트에 저장된다.** 별도 모델 객체가 없고 `lv.text`, `s0~s9.text`, `s11.text`(POINT),
   `p0~p6.text`(다음 1포인트 비용), `s7mi/s7mx…`(HP/MP/SP 최소~최대), `tbonus/tlvup/pbonus`를 `parseInt(x.text)`로 읽고 쓴다.
@@ -126,8 +137,8 @@
 - `recipe()`(가이드 출력): ■스탯(장비 기입란 템플릿 포함), ■재분배 순서, ■재분배 로그 순으로 출력한다.
   편집 레벨에는 레벨업 항목이 없다. 그래서 편집 레벨에서 투자했으면 그 레벨부터 읽되 비용 구간 비교 인덱스를 1 당기고(`adj`),
   투자하지 않았으면 다음 레벨부터 읽는다. 이때 첫 줄은 'Lv L+1부터'가 된다.
-- 단축키: `L` 레벨업, `S H I F M X A` = STAB/HACK/INT/DEF/MR/DEX/AGI +1(Shift = 대시), `←/→` 되돌리기/다시 실행,
-  `G` 육성 가이드, `P` 로그 읽기, `T` 스탯 편집 창, `Enter` 로그창 포커스, `Esc` 포커스 해제.
+- 단축키(Flash판): `L` 레벨업, `S H I F M X A` = STAB/HACK/INT/DEF/MR/DEX/AGI +1(Shift = 대시), `←/→` 되돌리기/다시 실행,
+  `G` 육성 가이드, `P` 로그 읽기, `T` 스탯 편집 창, `Enter` 로그창 포커스, `Esc` 포커스 해제. 웹판은 아래 '웹판 > 화면'.
 
 ## 데이터/구조 변경 체크리스트
 
@@ -149,6 +160,18 @@
     그 안에서 TextField 자체 여백 2×2를 뺀다. 글꼴 10px에서 한글 1자 10px, ASCII 1자 5px). 지금 가장 긴 이름이 80px로
     원래 일본어판과 같으니 이보다 길게 하지 않는다.
   - `몰빵` 키워드(`gokuburi` 출력과 `token3[2]` 비교)는 공백 없는 한 토큰이어야 한다.
+- **웹판에 반영**(표나 로직을 바꿀 때마다)
+  - `oresim-const.as`를 고친 뒤 `node tools/gen-web-const.js`로 `web/js/const.js`를 다시 만든다(손으로 고치지 않는다).
+    그다음 `node tools/gen-web-const.js --check`, `tests/const-check.js`, `tests/engine-diff.js`, `tests/engine-invariants.js`를 돌리고,
+    Playwright가 있으면 `tests/web-smoke.js`, `tests/web-diff.js`도 돌린다.
+  - 표가 바뀌면 `serialize()`의 표 지문 `d`가 저절로 달라진다. 엔진의 동작이나 `serialize()` 형식을 바꾸면 `web/js/engine.js`의
+    `ENGINE_VERSION`을 올린다. 어느 쪽이든 방문자 브라우저에 자동 저장된 엔진 상태는 되살리지 않고, 저장해 둔 로그 글(+보너스·주력 계열)에서
+    다시 만든다(되돌리기 기록은 이어지지 않고 알림 한 줄이 뜬다).
+  - `oresim-main.as`를 바꾸면 엔진도 같이 바꾼다. 차등 시험은 하네스가 돌리는 지금의 원본과 비교한다.
+  - 로그·가이드 글의 모양(줄 머리 `LV`/`Bonus`/`Xien`/`Status`, 푸터, `LV:` 요약 줄, 가이드의 ■ 절 제목, '까지 찍기',
+    '시작 스탯 { … }', `몰빵`)을 바꾸면 그 글을 읽어 표로 그리는 `web/js/app.js`의 `parseLog()`/`parseGuide()`도 고친다.
+  - 캐릭터를 더하면 초상 `web/img/c<번호>.png`(84×100)도 더한다. 화면 배치(1440×900에서 옆 팔 16줄, 캐릭터 시트 4열)는 16명 기준이다.
+  - 판을 낼 때마다 `web/index.html`의 `?v=`를 다섯 곳(아이콘, `app.css`, 스크립트 셋) 모두 올린다(아래 '웹판 > 배포').
 
 ## 수정 이력(2026-10)
 
@@ -204,6 +227,197 @@
   (26~28행의 순서가 표마다 다르고, 35행이 표에 따라 임시 이름으로 붙어 있었다). 데이터는 `XIEN_NAME`의 스탯과 일치한다.
 - 글꼴(`돋움체`)과 컴파일 로캘(`en_US`)은 위 빌드 항목 참고.
 
+## 웹판(2026-10)
+
+방문자마다 자기 브라우저에서 혼자 쓰는 정적 웹 앱이다. 서버 쪽 코드도 서버 저장소도 없다. 계산은 원본 AS3를 동작 그대로 옮긴 엔진이 하고,
+화면은 새로 만들었다. 플레이어용 안내와 배포 방법(nginx, Cloudflare)은 `README.md`의 '웹판' 절에 있다.
+
+### 파일
+
+| 경로 | 역할 |
+|---|---|
+| `web/index.html` | 페이지 하나. `js/const.js` → `js/engine.js` → `js/app.js` 순서로 읽는 고전 스크립트(모듈 아님)와 `app.css`. 주소가 모두 상대경로라 어느 경로에 올려도, `file://`로 열어도 돈다 |
+| `web/app.css` | 화면 스타일. 색·글자 크기·간격은 `:root` 토큰 |
+| `web/js/const.js` | `oresim-const.as`의 표와 상수(`Oresim.CONST`, 깊이 얼림). `tools/gen-web-const.js`가 만들고 `--check`가 최신인지 본다. 손으로 고치지 않는다 |
+| `web/js/engine.js` | 계산 엔진(`Oresim.createEngine`). DOM을 건드리지 않아 Node `vm`에서도 돈다 |
+| `web/js/app.js` | 화면: 그리기, 조작, 키보드와 초점, 효과음, 클립보드, 자동 저장, 공유 링크, 대화상자 |
+| `web/img/c0~c15.png` | 캐릭터 초상(84×100). `image/c0~c15.png`의 사본 |
+| `web/se/lvup.mp3`, `stup.mp3` | 효과음. `se/`의 사본 |
+| `web/favicon.svg` | 워드마크의 계단 표지(#13708f) |
+
+`const.js`와 `engine.js`는 전역 `Oresim` 하나만 만들고(`CONST`, `ENGINE_VERSION`, `createEngine`, 시험 전용 `_as3`), 문자열 리터럴을
+모두 ASCII로 쓴다(`\uXXXX`, 옆에 한국어 주석). 서버가 다른 문자 코드로 보내도 값이 깨지지 않게 하려는 것이다. `index.html`·`app.js`·`app.css`에는
+한국어가 그대로 있으므로 UTF-8로 내보낸다.
+
+### 엔진(`web/js/engine.js`)
+
+- **동작 그대로 옮긴 것**: 어떤 조작 순서에서도 원본이 보여 줄 상태와 내놓을 글(로그, 육성 가이드)이 바이트 단위로 같다.
+  `oresim-main.as`의 함수를 같은 순서·이름으로 한 줄씩 옮겼고, 원본처럼 상태를 Flex 컨트롤 흉내에 넣는다
+  (`T` = Text/Label의 text, `V` = 버튼 visible, 콤보박스 `charCB`/`styleCB`/`xienCB`, 스테퍼 `bonusNS`와 스탯 편집 칸). 값은 원본처럼 `parseInt(T.lv)`로 읽는다.
+- **프레임 모형**: 조작 1회 = 원본 이벤트 핸들러 1회 + 다음 프레임 커밋(`act()` → `commitFrame()`). 스테퍼에 코드로 넣은 값은 다음 프레임에야
+  반올림·클램프된다. 핸들러 안에서 예외가 나면 Flash처럼 그 핸들러만 멈추고 거기까지 바뀐 상태가 남는다(결과에 `error: true`).
+- **AS3/Flex 의미**: JS로 돌리면 달라지는 곳(C1 NumericStepper 커밋 시점, C2 ComboBox, C3 ArrayCollection, C4 Text, C5 RegExp `\s`,
+  C6 타입 있는 변수, C7 `as Text`, C8 처리되지 않은 예외, C9 `callLater`, C10 전역 `parseInt`)은 `tests/harness.js` 머리 주석과 `tests/README.md`에
+  근거(Apache Flex SDK 4.16.1의 mx 소스, avmplus 소스)와 함께 적었고 엔진도 같은 의미를 따른다. Flash Player로 직접 확인하지는 못했다.
+- **반복 안전장치**: 끝까지 돌아도 결과가 같은 반복만 정확히 건너뛴다. 그래도 끝이 없는 입력(아주 작은 LV·스탯 값의 `Status` 줄 등)만
+  한 조작에서 실제 레벨업·스탯 +1 10만 번(`WORK_LIMIT`) 또는 반복 1000만 번(`TICK_LIMIT`)을 넘으면 `error: true`로 멈춘다(Flash의 스크립트 시간 초과와 같은 모양).
+  정상 사용은 한 조작에 많아야 2천 번 남짓이다.
+- **API**(계약 개정 2. 엔진·화면의 주석이 가리키는 API 설명은 이 항목이다). 모두 동기 호출이다.
+  - `Oresim.createEngine()`은 `initApp` 직후(캐릭터 0, 타입 0)의 앱이고, `createEngine(saved)`는 `serialize()` 결과를 되살린다.
+  - 상태를 바꿀 수 있는 호출은 `{ ok, sound, … }`를 돌려준다. `ok: false`는 원본이 거절한 것(상태 그대로), `sound`는 `'lvup' | 'stup' | null`
+    (ok일 때만 null이 아니다), `error: true`는 원본 핸들러가 중간에 멈춘 것이다.
+  - 조작: `levelUp()`, `statUp(i)`, `dash(i)`, `undo(byLevel)`·`redo(byLevel)`(byLevel = Shift, 원본 `dashBack`/`dashProgress`의 묶음 이동. 화면 문구는 '대시 단위'),
+    `setBonus(rate)`(→ `rate` = 스테퍼가 확정한 값: 5 단위 반올림, 0~100), `setXien(x)`(지금 고를 수 없는 줄이면 `ok: false`),
+    `setChar(c)`·`setType(s)`(지금 것을 다시 고르면 `ok: false`. 같은 계획을 다시 시작하는 것은 `reset()`), `reset()`,
+    `editOpen()`(스탯 편집 창의 값과 칸마다의 `limits`. 계획은 그대로) / `editCommit(values)`(스테퍼에 친 것처럼: 반올림·클램프, 읽을 수 없는 값은
+    그 칸 그대로, `''`는 그 칸의 최솟값), `importLog(text)`(→ `footer`, `typeFound`, `restarted`).
+  - 조회(상태를 바꾸지 않는다): `view()`(그릴 상태 전부: 캐릭터·타입과 16명 목록, LV, POINT, 스탯마다 `value`·`cost`·`nextStepAt`·`canUp`·`canDash`·`atCap`,
+    HP/MP/SP 값과 범위, 보너스, 주력 계열 줄과 `selectable`, `canUndo`·`canRedo`·`actions`(= `logindex`), `levelLog`(= `stLog` 사본)),
+    `preview()`(다음 레벨업이 주는 것, 레벨업할 수 없으면 `null`), `previewDash(i)`(대시가 끝나는 곳 `{ value, lv, point, levelUps }`, 대시가 거절되면 `null`),
+    `exportLog()`(`logOut()`의 글, 줄바꿈 `\r`), `guide()`(`recipe()`의 글, 원본 G가 돌지 않는 상태면 `''`), `logPane()`(원본 로그 상자의 글. 화면은 쓰지 않는다),
+    `serialize()`.
+  - `nextStepAt`은 원본의 초록 숫자(지금 LV에서 비용이 오르는 값)일 뿐 대시가 끝나는 곳이 아니다. 레벨업하며 가는 대시는 대개 그 앞에서 멈춘다.
+  - `Oresim._as3`와 `e._debugState()`는 시험 전용이다.
+- **저장 형식과 판**: `serialize()`는 JSON으로 저장할 수 있는 상태 전부(선택, 설정, 스탯, 되돌리기 기록, 로그)이고, `v: ENGINE_VERSION`(지금 `'1'`)과
+  `d`(`const.js` 표 전체를 JSON으로 만든 글의 FNV-1a 32비트 지문, 16진수 8자리)를 담는다. `v`나 `d`가 지금 엔진과 다르면 `createEngine(saved)`가 예외를 던진다.
+  기록을 자르지 않으므로(원본과 같다. 버린 갈래도 남는다) 새 계획 약 2KB, LV 285까지 715조작 약 120KB, 보통의 계획에서 많게는 약 253KB다
+  (작업 한도에 닿는 이상한 불러오기는 훨씬 클 수 있다).
+
+### 화면(`web/js/app.js`)
+
+- **한 방향**: 엔진 인스턴스는 하나(`E`)다. 모델 `{ view, preview, dash: previewDash(0..6), log: exportLog(), guide: guide(), stale }`을 엔진에서만 만들고
+  `render(model, ctx)` 하나로 모든 블록을 그린다. `stale`은 필요 포인트와 초록 숫자가 옛 값으로 남은 상태인지(아래 '그대로 둔 것')를 사본 엔진에 물어
+  정한 표시다(`probeStale()`). `editOpen()`은 스탯 편집 창을 열 때만 부른다. 화면은 엔진이 준 값을 꾸밀 뿐 게임 값을 셈하지 않는다
+  (지금 남은 예외 셋은 '남은 한계·주의').
+- **dispatch(act, ...args)**: 모든 컨트롤이 이름 있는 조작을 보낸다. 엔진을 try/catch로 부르고, `oresim:action` 이벤트(`detail: { act, args, ok }`)를 낸 뒤,
+  `ok`면 누름 표시·효과음(`r.sound`)·다시 그리기·자동 저장 예약, 거절이면 꺼진 컨트롤의 까닭을 화면 낭독기로 읽어 준다
+  (지금 고를 수 없는 주력 계열은 선택을 `view.xien.selected`로 되돌리고 '지금은 고를 수 없는 계열입니다').
+  - 다시 그리기는 세 가지다. 한 걸음(levelUp, statUp, dash, undo, redo, editCommit)은 ▲N 표시와 '직전 조작' 줄, 설정(setBonus, setXien)은 앞 걸음의 ▲를 그대로,
+    새 계획(setChar, setType, reset, importLog, openShared)은 ▲도 움직임도 없이 그린다.
+  - 원본처럼 거절된 ←/→/대시도 `updateStatus()`를 돌려 상태가 바뀔 수 있다(중간에 멈춘 불러오기 뒤). 그때는 다시 그리고 저장한다.
+  - 엔진이 예외를 던지면(엔진의 버그) 버튼 하나짜리 창 '계산 중 오류가 났습니다'를 띄우고 그 뒤로는 저장하지 않는다(알약 '저장 안 됨').
+  - `window.OresimUI = { render, dispatch, playSound, shareLink, engine }`(시험이 쓴다. `shareLink()`는 Promise).
+- **로그와 가이드**: 로그 탭은 언제나 `exportLog()`(되돌린 직후에도 지금 계획)이고, 가이드 탭은 `guide()`(빈 글이면 안내 문장)다. '복사'는 보이는 탭의 글을
+  `\r\n` 줄바꿈으로 복사한다(원본 copyPress처럼). 가이드는 수백 줄이라 탭이 보일 때만 다시 짓는다(조작이 멈추고 120ms 뒤, 키를 누르고 있으면 0.4초마다).
+- **붙여넣은 로그와 불러오기**: 로그 탭 밑의 따로 된 칸(1180px부터는 쓸 때만 펼친다)이다. 글자 칸 밖에서 누른 Ctrl/⌘+V도 이 칸으로 받는다.
+  로그 불러오기(단추, `P`, 칸 안에서 Ctrl/⌘+Enter)는 먼저 지금 계획의 사본(`createEngine(E.serialize())`)에서 읽어 본다.
+  - 읽을 줄이 없으면 아무것도 바꾸지 않고 알린다. 지울 계획이 있으면 읽어 본 계획(캐릭터/타입, LV)을 이름으로 말하고 묻는다.
+  - 캐릭터/타입 줄도 LV 줄도 없이 설정 줄(Bonus, Xien)만 읽은 글은 지금 계획에 설정만 반영하고 묻지 않는다.
+  - 깨끗이 읽었으면(푸터 있음, 오류 없음) 칸을 비워 접는다. 처음부터 다시 읽었거나(`restarted`) 중간에 멈췄으면(`error`) 글을 남겨,
+    다른 캐릭터를 골라 다시 불러올 수 있게 한다. 가나가 든 글에는 일본어판 로그 경고를 띄운다.
+- **확인**: 지울 계획이 있으면(`actions > 0`, 다시 실행할 조작이 있음, 또는 스탯 편집으로 시작한 계획: 시작 레벨의 `levelLog`가 `s`로 시작)
+  캐릭터·타입 바꾸기, 스탯 초기화, 로그 불러오기, 공유 링크 열기 전에 두 계획을 이름으로 말하고 묻는다. 지금 캐릭터·타입을 다시 고르면 아무 일도 없다.
+- **자동 저장**(이 브라우저에만): `localStorage['oresim:plan']` = `{ v: 1, engine: E.serialize(), log: exportLog(), b: 보너스%, x: 주력 계열, savedAt }`.
+  `v`(1)는 이 기록 형식의 판이고 `ENGINE_VERSION`과는 따로다.
+  - 상태가 바뀌고 300ms 뒤(누르고 있는 동안에는 미룬다)에 쓰고, `pagehide`와 `visibilitychange`(숨김)에서는 바로 쓴다.
+  - 엔진 상태를 쓰지 못하면(`QuotaExceededError` 등) `engine` 없이 로그만 남긴다. 그것도 못 하면 상단 바 알약이 '저장 안 됨'(title에 까닭)이 되고 처음 한 번 알린다.
+  - 시작할 때: 엔진 상태로 되살린다 → 안 되면(다른 `ENGINE_VERSION`, 바뀐 표, 로그만 저장됨) 새 엔진에 `importLog(log)`, `setBonus(b)`, `setXien(x)`
+    (알림 '저장된 계획을 재분배 로그에서 다시 만들었습니다. 되돌리기 기록은 이어지지 않습니다.') → 그것도 안 되면 새 계획과 알림 한 줄.
+  - 탭을 여럿 열면 마지막에 저장한 탭이 이긴다(탭 사이를 맞추지 않는다).
+- **공유 링크**('링크 복사'): UTF-8 JSON `{ v: 1, log: exportLog()(줄바꿈 \n), b: 보너스%, x: 고른 주력 계열 }`. 로그는 마지막 레벨업 뒤에 바꾼 설정을 남기지 않으므로
+  `b`, `x`가 그것을 싣는다. `CompressionStream('deflate-raw')` → base64url → `#p=…`이고, 압축을 못 하는 브라우저는 압축 없이 `#t=…`다.
+  링크 = 지금 페이지 주소(`#` 앞) + 그 조각이라 계획은 서버로 가지 않는다.
+  - 여는 쪽(시작할 때와 `hashchange`): `#p=`/`#t=` 뒤의 base64url 글자만 읽는다(채팅에서 딸려 온 `.`, `)` 등은 버린다). 크기 한도(조각 40만 자, 푼 뒤 256KB, 2000줄)를
+    넘거나 이 시뮬레이터가 쓰지 않는 모양의 로그(`Status` 줄이 둘 이상, LV·스탯이 1~285 밖인 `Status` 줄)는 읽지 않는다. 손으로 만든 링크가 엔진을 몇 초씩
+    붙잡지 않게 하려는 것이다(붙여넣은 로그는 원본처럼 그대로 읽는다). `DecompressionStream('deflate-raw')`이 없는 브라우저에는 `#p=` 링크를 열 수 없다고 알린다.
+  - 새 엔진에 `importLog(log)`, `setBonus(b)`, `setXien(x)`(거절되면 무시)로 후보를 만들어, 지금 계획과 같으면(로그 글, 보너스, 주력 계열) 조용히 넘어가고,
+    지울 계획이 있으면 묻고('저장된 계획 유지' / '링크 계획 열기'), 없으면 바로 연다. 링크는 답할 때까지 주소창에 남아 묻는 동안 새로 고쳐도 다시 묻고,
+    답하면 `history.replaceState`로 지운다. 다른 대화상자가 열려 있으면 그것이 닫힌 뒤에 묻는다.
+  - 왕복에서 알려진 차이 하나: 조작 0회인 계획(처음까지 되돌린 계획 등)의 로그 첫머리 `Bonus` 줄은 원본이 기록 맨 앞 칸에 덧쓴 값이라 받는 쪽에서 같은 글로
+    다시 만들 수 없다(원본도 같다). 보너스 값은 `b`로 같아진다.
+  - 클립보드 쓰기가 막히면 링크를 주소창에 넣고, 링크를 골라 둔 칸을 보여 준다(Ctrl/⌘+C로 직접 복사).
+- **효과음**: `se/lvup.mp3`·`se/stup.mp3`를 Web Audio로 겹쳐 재생한다(첫 pointerdown/keydown에서 깨운다). `file://`에서는 `fetch`가 막히므로 `<audio>`로 낸다.
+  소리는 엔진 결과의 `sound`만 따른다. 크기(0~100, 5 단위)와 끄기는 상단 바와 캐릭터 시트에 있고 `localStorage`의 `oresim.sound.volume`(기본 50),
+  `oresim.sound.muted`(기본 false)에 기억한다. 막대를 놓을 때와 소리를 켤 때 `stup`을 한 번 들려준다.
+- **키보드**: `L` 레벨업, `S H I F M X A` +1, Shift+그 키 대시, `←/→` 되돌리기/다시 실행(Shift = 대시 단위), `G` 로그·가이드 탭 전환, `P` 붙여넣은 로그 불러오기,
+  `T` 스탯 편집, `Enter` 로그(가이드)로 초점(초점이 페이지 자체에 있을 때), `Esc` 칸·로그·떠 있는 알림·창에서 나가기, `?` 단축키 목록,
+  붙여넣은 로그 칸에서 Ctrl/⌘+Enter.
+  - 글자 키는 `e.code`로 읽어 한글 자판에서도 같다. 라디오·탭·효과음 막대는 `↑/↓`로 바꾸고, `←/→`는 글자 칸 밖이면 언제나 되돌리기/다시 실행이다.
+  - 대화상자가 열려 있거나, 글을 쓰는 칸 안이거나(숫자만 받는 보너스 칸에서는 값을 확정한 뒤 글자 단축키가 통한다), Ctrl/⌘/Alt를 누르고 있거나,
+    한글 조합 중이면 단축키를 쓰지 않는다.
+- **그 밖**: 성공한 조작의 결과와 거절된 조작의 까닭을 `#live`로 읽어 준다(키를 누르고 있으면 마지막 것만). 못 쓰는 단추는 `aria-disabled`와 까닭을 가진다.
+  강제 색상, 움직임 줄이기, 글자 간격 넓히기, 터치의 44px 누름 영역을 맞췄다. 자바스크립트가 꺼져 있으면 제품 이름, 안내 한 줄
+  ('이 시뮬레이터는 자바스크립트를 켜야 쓸 수 있습니다.'), 출처만 보인다. `file://`에서도 모든 흐름이 돈다(이름표 링크는 그 파일로 간다).
+- **성능**: 키를 누르고 있어도 조작 한 번(엔진, 대시 미리보기 7개, 로그, 가이드, 그리기)이 16ms 안에 끝나야 한다. 마지막 측정(1440×900, 긴 계획, 한가한 기계)은
+  p95 기준 L 11.0ms, S 10.2ms, ← 10.0ms, Shift+← 15.1ms이고 엔진 몫은 약 1.6ms다. 그래서 글자와 속성은 달라졌을 때만 쓰고(`setText`/`setAttr`),
+  스탯 줄은 부분별로, 로그 줄은 바뀐 줄만 새로 짓고, 가이드는 탭이 보일 때만 짓고, 레이아웃은 그리기 끝에 한 번만 읽는다.
+
+### 디자인
+
+- 승인된 모습은 시안 B(안개색 L자 틀 안의 흰 시트) + 시안 A에서 옮긴 네 가지(비용 계단 SVG, 변화 표시 ▲N, 로그·가이드 조판, 휴대폰의 고정된 취소/적용)다.
+  팔레트·서체·레이아웃을 바꾸지 않는다.
+  - 토큰: 바탕 `--ground` #f1f5f7, 틀 `--frame` #e9f0f3, 강조(나르비크 바다) `--accent` #13708f, 글자 `--text` #10181d, 흐린 글자 `--muted` #55626a,
+    컨트롤 `--control` #cbd5da, 긍정 `--positive` #247b50.
+  - 서체: IBM Plex Sans KR 400/500/600. Hahmlet 600은 워드마크와 h1(캐릭터 이름)에만 쓴다(둘 다 Google Fonts). 글자 크기는 12/14/16/20/22/36뿐이다.
+  - 나르비크는 색과 서체로만 나타내고 나르비크 그림은 쓰지 않는다. 캐릭터 초상은 쓴다.
+  - 검사는 Taste Skill(design-taste-frontend)의 앱 화면 규칙이다. `web/`에서 `node <스킬>/scripts/lint.mjs --app .`(0 FAIL, 0 WARN)와
+    `CHROME_PATH=<크롬> node <스킬>/scripts/inspect.mjs --app index.html`(0 FAIL, WARN은 아래 tiny-text 하나)을 돌린다.
+    작업 파일 `web/.taste-skill/`(방향 정의 `direction.json`, 검사 결과)은 gitignore다.
+- **입력칸 테두리**: 글자를 넣는 칸만 `--field-line` #808f98(흰 바탕 3.33:1, 직접 복사 칸의 #f6f9fa 채움 위 3.15:1)이고, 가리키면 더 짙은
+  `--field-line-strong` #66757e(흰 바탕 4.76:1)다. 대상은 붙여넣은 로그 칸(`.loader textarea`), 복사·링크 복사가 막혔을 때의 직접 복사 칸(`.pop textarea`),
+  보너스 스테퍼(`.stepper`), 스탯 편집 숫자 칸(`.fld input`), 휴대폰 너비(640px 이하)의 주력 계열 칸(`.xien-opt`, 지금 고를 수 없는 칸은 `--control`)이다.
+  버튼(`.btn`을 비롯한 테두리 버튼), 넓은 화면의 주력 계열 라디오 원, 스위치, 구분선은 `--control` #cbd5da 그대로다(버튼을 가리키면 `--control-strong` #b3c1c8).
+  포커스·선택·강조 상태는 강조색이다. 새 입력칸도 이 규칙을 따르고, 테두리는 놓인 바탕에서 3:1 이상이어야 한다.
+- **출처 줄**(승인됨. 말과 크기를 바꾸지 않는다): '원작: 나만의 재분배 시뮬레이터 Flash판 (rugumaxi, Apache License 2.0) · 웹판은 이를 옮겨 고친
+  비공식 팬 도구입니다.' / 'TalesWeaver와 캐릭터 그림의 권리는 Softmax와 Nexon에 있습니다.' 'Apache License 2.0'은
+  https://www.apache.org/licenses/LICENSE-2.0 링크이고, 12px 흐린 글자(`--muted`)다.
+  - `index.html`에 두 벌(`.credit-rail`, `.credit-page`)이 있다. 옆 팔이 이름까지 보이는 너비(76px 얼굴 팔인 1180–1279px과 옆 팔이 접히는 1100px 이하는 아니다)이고
+    창 높이가 900px 이상이면 옆 팔 맨 아래, 그 밖에서는 페이지 끝에 보인다. 옆 팔에 두면 옆 팔이 넘칠 때(대체 글꼴, 글자 확대)는 `placeCredit()`이
+    `html.credit-low`를 달아 페이지 끝으로 옮긴다.
+  - 이 12px 줄 때문에 inspect가 새 계획 화면에서 tiny-text WARN(13px 미만 글자 약 46%, 기준 45%)을 내는 것은 받아들였다. FAIL은 안 된다.
+- 1440×900에서 한 화면에 든다: 시트가 y 892, 본문과 레일 두 열이 862, 옆 팔의 출처 줄이 884에서 끝나고 옆 팔은 스크롤하지 않는다.
+- 그 밖에 승인된 세부: 다음 레벨업의 '보너스 받음/없음 · N%' 캡션, 스탯 편집 문구('이 상태는 재분배 로그 맨 앞에 남습니다', '스탯마다 1~285',
+  '가장 큰 값의 계열이 주력 계열이 됩니다'), `.finding` 최대 54em, 틀 위 가리킴 `--frame-hover` #dae3e8.
+- 승인된 문구(2026-10-31): Shift+←/→는 '대시 단위'다(단축키 목록 '대시 단위로 되돌리기 · 다시 실행', 단추 말풍선 '← (⇧: 대시 단위)',
+  직전 조작 '되돌리기(대시 단위)'). 원본 `dashBack`/`dashProgress`처럼 같은 스탯을 같은 비용으로 이어 찍은 조작을 사이의 레벨업과 함께
+  한꺼번에 옮기므로 '한 레벨씩'이라 하지 않는다. 처음까지 되돌린 계획(조작 0회, 다시 실행할 것이 있음)의 발견 문장은
+  '처음으로 되돌렸습니다. 다시 실행(→)으로 되살릴 수 있습니다.'이고, '새 계획입니다.'는 지울 계획이 없을 때(`hasWork`가 거짓)만 쓴다.
+
+### 원본과 다르게 한 것, 그대로 둔 것
+
+- 일부러 다르게 한 것
+  - 로그 보기는 언제나 지금 계획(`exportLog()`)이다. 원본의 로그 상자는 되돌리기·다시 실행·설정·캐릭터 변경·스탯 편집 뒤에도 앞 글을 그대로 두었고,
+    원본의 P는 그 상자를 다시 읽었다. 웹판의 P(로그 불러오기)는 따로 된 '붙여넣은 로그' 칸만 읽는다. 원본 상자는 `logPane()`으로 시험에만 남겼다.
+  - G는 로그·가이드 탭을 바꾼다(원본은 로그 상자에 가이드를 썼다. `guide()`는 글만 만든다).
+  - 아무것도 바꾸지 못하는 대시(LV 285에서 POINT가 비용보다 적을 때 등)는 `ok: false`이고 소리가 없다(원본은 스탯업 소리를 냈다).
+    엔진 결과의 `sound`가 원본과 다른 곳은 여기뿐이다.
+  - 계획을 지우기 전에 묻는다(위 '확인'). 원본은 묻지 않고 바꿨다.
+  - 그 밖에 원본에 없던 것: 대시 단추의 'N까지'(`previewDash`), 다음 레벨업 미리보기, ▲N 표시, 일본어판 로그 경고, 자동 저장, 공유 링크.
+- 엔진이 지키는 원본의 버릇
+  - 붙여넣은 로그의 `Bonus : 33%`는 같은 읽기 안의 레벨업에는 반올림 없이 33으로, 그 뒤에는 35로 쓰인다(C1).
+  - 붙여넣은 로그의 고를 수 없는 `Xien` 줄은 선택을 `tmpx`(드롭다운을 열 때 기록한 항목)로 옮긴다.
+  - 스탯 편집을 적용하면 9999가 넘는 POINT는 9999로 잘린다. 되돌리기 기록은 자르지 않는다.
+  - 공백 없는 `Bonus :75%` 같은 줄은 원본처럼 읽기 중간에 멈추고(`error: true`) 읽은 데까지 남는다. 그 뒤에는 `updateStatus()`가 돌지 않아 필요 포인트와
+    초록 숫자가 앞 상태의 것으로 남고, 다음에 `updateStatus()`를 도는 조작에서 바로잡힌다. 그동안 화면은 원본처럼 그 숫자(초록 숫자만)를 보이고,
+    그 숫자로 셈하는 말('N부터 M', POINT 밑 횟수)은 하지 않는다.
+  - Shift 되돌리기/다시 실행은 움직이지 않아도 기록된 Xien/보너스 선택을 되살릴 수 있다.
+
+### 시험
+
+저장소 맨 위에서 돌린다. 자세한 것은 `tests/README.md`. 시간은 이 작업 환경에서 잰 값이다.
+
+| 명령 | 확인하는 것 | 시간 |
+|---|---|---|
+| `node tools/gen-web-const.js --check` | `const.js`가 `oresim-const.as`에서 다시 만든 결과와 같은지 | 1초 안 |
+| `node tests/const-check.js` | 표가 원본과 깊이 같은지, 생성기 출력과 바이트 단위로 같은지, 얼어 있는지, 스테퍼 한계 = `oresim.mxml`, 로그 읽기가 기대는 데이터 성질, 다른 문자 코드로 읽어도 같은지 | 1초 안 |
+| `node tests/as3-semantics.js` | 엔진·하네스의 AS3 `parseInt`와 `\s`가 avmplus 소스에서 따진 답, 그리고 서로 같은지 | 1초 안 |
+| `node tests/engine-diff.js [seeds=50] [조작수=400] [첫seed=1]` | 차등 퍼저: 원본(하네스)과 엔진에 같은 무작위 조작을 넣고 조작마다 결과, 상태 전체, `view()`, `exportLog()`, `guide()`를 비교한다. `preview()`/`previewDash()`는 원본이 실제로 한 결과와 | 기본 약 100초, `300 400` 약 8분, `8 1500 1001` 약 50초 |
+| `node tests/engine-invariants.js [runs=40] [seed=777]` | 불변식 퍼저: 로그 왕복, ←×k →×k 복귀, P 멱등, 편집 '적용' 무변화, `serialize()` 왕복, 미리보기 = 실제 등 | 약 55초 |
+| `node tests/web-smoke.js` | (Playwright) `web/`을 작은 http 서버로 내보내 Chromium에서 시작, 진짜 키·클릭 뒤 화면 = `engine().view()`, 보너스 반올림, 새로 고침 뒤 되살리기(되돌리기 기록까지), 공유 링크 왕복과 묻는 동안의 주소창, 손으로 만든 링크 거절, 붙여넣은 로그 왕복, 깨끗한 콘솔(16가지) | 약 10초 |
+| `node tests/web-diff.js [seeds=20] [steps=150] [firstSeed=1]` | (Playwright) `file://`로 연 화면을 진짜 입력으로만 움직이고 같은 입력을 원본(하네스)에도 넣어, 조작마다 화면의 글자를 원본 상태와 비교한다(세 너비, 정해 둔 순서 18개 + 무작위) | `2 60` 약 2분 20초, `10 120` 약 7분 |
+
+- Playwright 시험 둘은 `require('playwright')`가 안 되거나 브라우저를 띄우지 못하면 그렇게 말하고 종료 코드 0으로 끝난다(저장소는 npm을 쓰지 않는다).
+- 마지막 확인(2026-10-31): `engine-diff 300 400`과 `web-diff 10 120`(seed 1~10) 어긋남 0(마지막 문구 수정 직전 판). 최종 판에서 `web-diff`의 정해 둔 순서 18개와
+  seed 201~203 어긋남 0, `web-smoke` 모두 통과, `engine-diff 20 400 777`·`engine-invariants` 통과, Taste Skill lint 0 FAIL/0 WARN, inspect 0 FAIL.
+
+### 배포
+
+- `web/`의 내용(`index.html`, `app.css`, `favicon.svg`, `js/`, `img/`, `se/`)을 정적 웹 서버의 아무 경로에 복사하면 된다. 빌드도 서버 코드도 없다.
+  페이지가 요청하는 것은 자기 파일과 Google Fonts뿐이다.
+- 판을 낼 때마다 `index.html`의 `?v=` 판 번호를 다섯 곳(아이콘, `app.css`, `js/const.js`, `js/engine.js`, `js/app.js`) 모두 함께 올린다. 그래서 그 다섯은
+  오래 캐시해도 되고 `index.html`은 캐시하지 않는다. `img/`, `se/`에는 판 번호가 없으니 그 파일을 바꾸면 이름을 바꾸거나 캐시를 비운다.
+- 클립보드 API는 HTTPS(또는 localhost)에서만 열리므로 HTTPS로 내보낸다. nginx 설정 예와 Cloudflare 설정은 `README.md`.
+
 ## 남은 한계·주의
 
 - 데이터 일부는 추정치다. 실측값을 알면 교체할 것.
@@ -212,7 +426,7 @@
   - 주술계 HP/MP/SP 최소/최대(실측 없음. 템플릿 폭을 유지한 채 평균 중심으로 옮긴 잠정값).
   - 이솔렛/벤야/로아미니의 `MAX_XIEN`은 `[99]` 플레이스홀더다.
   - 사이드(데스사이드)/홀리 해머의 HP/MP/SP는 아나이스 행을 복사한 값이다.
-- 붙여넣기 버튼은 호스트 HTML에 `getClipboard()`가 있어야 보인다(위 빌드 항목).
+- Flash판의 붙여넣기 버튼은 호스트 HTML에 `getClipboard()`가 있어야 보인다(위 빌드 항목).
 - 계열 이름·장비 칸·용어는 넥슨 공식 게임 가이드 원문(static.tales.nexon.com)으로 확인했다(계열 표와 다르게 줄이거나
   바꾼 이름은 위 '한국어화' 항목 참고). 캐릭터·타입 이름 일부는 나무위키가 Cloudflare 보안 검사로 자동 접근을 막아
   검색 결과의 문서 제목과 요약으로 확인했다.
@@ -220,10 +434,18 @@
 - 참고: 넥슨 공식 재분배 확률 페이지(static.tales.nexon.com/Probability/Game/5)의 레벨업 HP/MP/SP 상승 범위
   (한국 서버, 2026-10 확인)는 데스사이드 16~26/1~3/20~25, 홀리 해머 18~28/2~4/25~33, 주술 14~18/6~12/15~25다.
   위 추정치 행과 다르지만 아직 반영하지 않았다. 다른 계열은 대부분 플래너 값과 같거나 1~2 차이다.
+- 웹판
+  - 화면이 엔진 값으로 셈하는 숫자가 셋 남아 있다: 비용 계단이 시작하는 값(`nextStepAt − 25`), 다음 비용(`cost + 1`, 계단 이름표와 발견 문장),
+    POINT 밑 줄의 횟수와 남는 포인트(`min(floor(point / cost), 단계 끝 − value)`). 원본 식으로 정확하고 `web-diff`가 원본에서 실제로 눌러 맞춰 보지만(차이 0)
+    엔진의 출력은 아니다. 엔진에 읽기 전용 필드(`nextCost` 등)를 더해 옮길지는 정하지 않았다. 비용 숫자가 옛 값인 동안에는 이 셈을 하지 않는다.
+  - Chromium(Playwright) 밖의 브라우저, 특히 Safari는 시험하지 못했다. '링크 복사'는 비동기 압축 뒤에 클립보드에 쓴다.
+  - 공유 링크 길이는 보통 220~400자, 일부러 들쭉날쭉하게 만든 346줄 계획은 약 2,000자, `#t=`(압축 없음)는 약 12,000자다. 긴 주소를 자르는 메신저가 있다.
+  - 자동 저장은 탭 사이를 맞추지 않는다. 저장 공간이 모자라면 로그만 남겨 되돌리기 기록을 잃는다.
 
 ## 검증 방법 메모
 
-Flash를 실행·컴파일할 수 없어서 다음과 같이 검증했다. 스크립트는 세션 작업 공간에만 있었고 저장소에는 넣지 않았다.
+Flash를 실행·컴파일할 수 없어서 다음과 같이 검증했다. 2026-10 Flash판 수정·한국어화 때의 스크립트는 세션 작업 공간에만 있었고 저장소에는 넣지 않았다.
+웹판을 만들면서 같은 방식의 하네스(`tests/harness.js`)와 차등·불변식 퍼저를 `tests/`에 넣었다(위 '웹판 > 시험').
 1. 하네스
    - `.as`에서 AS3 전용 문법(`import`, `[Bindable]`, `public/private`, `:Type`, `as Text`)만 정규식으로 지운다.
    - Node `vm` 컨텍스트에서 실행하고 Flex 컨트롤은 목으로 바꾼다.

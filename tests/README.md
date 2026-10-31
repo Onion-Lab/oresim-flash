@@ -1,7 +1,9 @@
-# tests — 웹판 엔진 검증
+# tests — 웹판 검증
 
-웹판 계산 엔진(`web/js/engine.js`)이 원본 Flash 판(`oresim/oresim-main.as`)과 **동작이 같은지** 확인하는 스크립트들이다.
-Node 22 만 있으면 된다(npm 설치 없음). 저장소 맨 위에서 실행한다.
+웹판 계산 엔진(`web/js/engine.js`)이 원본 Flash 판(`oresim/oresim-main.as`)과 **동작이 같은지**, 그리고 화면(`web/`)이 엔진·원본과
+같은 것을 보여 주는지 확인하는 스크립트들이다. 저장소 맨 위에서 실행한다.
+엔진 시험 넷은 Node 22 만 있으면 된다(npm 설치 없음). 화면 시험 둘(`web-smoke.js`, `web-diff.js`)은 선택이다: Playwright 가 있을 때만 돌고,
+없으면 그렇게 말하고 종료 코드 0 으로 끝난다(아래 '화면 시험').
 
 | 스크립트 | 확인하는 것 |
 |---|---|
@@ -9,6 +11,11 @@ Node 22 만 있으면 된다(npm 설치 없음). 저장소 맨 위에서 실행�
 | `node tests/as3-semantics.js [개수=40000] [seed=1]` | 엔진과 하네스가 흉내 내는 AS3 의 전역 `parseInt` 와 RegExp `\s` 가 avmplus 소스에서 따진 답과 같은지, 무작위 글자열에서 두 구현이 서로 같은지 |
 | `node tests/engine-diff.js [seeds=50] [조작수=400] [첫seed=1]` | **차등 퍼저.** 같은 무작위 조작을 원본(하네스)과 엔진에 넣고 조작마다 결과값, 상태 전체, `view()`, `exportLog()`, `guide()` 를 비교한다. `preview()`/`previewDash(i)` 는 그 뒤 원본이 실제로 한 레벨업·대시와 비교한다. 처음 어긋난 곳에서 seed·순서·조작 목록·다른 칸을 찍고 종료 코드 1 로 멈춘다 |
 | `node tests/engine-invariants.js [runs=40] [seed=777]` | **불변식 퍼저.** 엔진만 돌리며 로그 왕복 재현, ←×k →×k 복귀, P 멱등, 편집 창 '적용' 무변화, Xien ≤ MAX_XIEN, 예외 없음, `serialize()` → `createEngine(saved)` 동등성, `preview()` = 실제 레벨업, `previewDash(i)` = 실제 대시, 결과 모양(`{ ok, sound }`), 로그 상자(`logPane()`)가 바뀌는 때, `importLog` 의 `footer`/`typeFound`/`restarted`, 반복 안전장치, 결과 객체 격리, 잘못된 저장 상태 거부 |
+| `node tests/web-smoke.js` | **화면 연기 시험(선택, Playwright).** 시작, 진짜 키·클릭 뒤 화면의 숫자 = `OresimUI.engine().view()`, 새로 고침 뒤 되살리기, 공유 링크 왕복, 붙여넣은 로그 왕복, 깨끗한 콘솔 등 16가지(아래) |
+| `node tests/web-diff.js [seeds=20] [steps=150] [firstSeed=1]` | **화면 차등 시험(선택, Playwright).** 화면을 진짜 입력으로만 움직이고 같은 입력을 원본(하네스)에 넣어, 조작마다 화면이 보여 주는 글자가 원본 상태와 같은지 본다(아래) |
+
+걸리는 시간(이 작업 환경에서 잰 값): `gen-web-const --check`·`const-check`·`as3-semantics` 각 1초 안, `engine-diff` 기본값 약 100초
+(`300 400` 약 8분, `8 1500 1001` 약 50초), `engine-invariants` 약 55초, `web-smoke` 약 10초, `web-diff 2 60` 약 2분 20초(`10 120` 약 7분).
 
 완료 기준으로 돌린 명령:
 
@@ -19,10 +26,74 @@ node tests/as3-semantics.js
 node tests/engine-diff.js 300 400     # 어긋남 0
 node tests/engine-diff.js 8 1500 1001 # 긴 seed: 최고 레벨 285, 스탯 상한까지 간다
 node tests/engine-invariants.js
+node tests/web-smoke.js               # ALL PASS (Playwright 가 있을 때)
+node tests/web-diff.js 10 120         # 어긋남 0 (Playwright 가 있을 때)
 ```
 
 `DIFF_VERBOSE=1` 을 주면 차등 퍼저가 조작을 하나씩 찍는다. `ORESIM_ENGINE=경로` 를 주면 그 엔진 파일로 돌린다
 (일부러 고장 낸 엔진을 이 테스트들이 잡아내는지 볼 때 쓴다).
+
+## 화면 시험(선택: Playwright)
+
+저장소는 npm 을 쓰지 않으므로 Playwright 는 저장소 밖에 둔다. `require('playwright')` 가 되는 Node 에서 돌리면 된다.
+전역으로 설치했다면 전역 모듈 폴더를 `NODE_PATH` 로 알려 준다. 브라우저는 Playwright 의 Chromium 을 쓴다(`chromium.launch()`).
+
+```sh
+# 예: 전역 설치(저장소에는 package.json 을 두지 않는다)
+npm install -g playwright
+npx playwright install chromium
+NODE_PATH="$(npm root -g)" node tests/web-smoke.js
+NODE_PATH="$(npm root -g)" node tests/web-diff.js 2 60
+```
+
+`playwright` 를 불러오지 못하거나 브라우저를 띄우지 못하면 두 스크립트 모두 그렇게 찍고 종료 코드 0 으로 끝난다.
+하나라도 실패하면 종료 코드 1 이다.
+
+### `web-smoke.js`
+
+`web/` 을 작은 http 서버(127.0.0.1, 빈 포트)로 내보내고 Chromium 으로 연다. 16가지를 확인한다.
+- 새 계획으로 시작하고 `window.OresimUI` 가 `render, dispatch, playSound, shareLink, engine` 인지
+- 진짜 키(L L L S S Shift+A ← →)와 클릭(레벨업, HACK +1, STAB 대시) 뒤 화면의 POINT, LV, HP/MP/SP, 스탯 값과 필요 포인트,
+  대시 단추의 'N까지'(`previewDash`), 로그 표의 글(`exportLog()`)이 엔진과 같은지
+- 보너스 칸에 62 를 치면 엔진이 60 으로 확정하고 칸도 60 인지
+- 새로 고침 뒤 자동 저장에서 같은 계획(`view()`, 로그)과 되돌리기 기록이 되살아나는지
+- 링크 복사가 계획 전체(`{ v, log, b, x }`)를 담고, 그 링크를 새 브라우저(390 × 844)에서 열면 같은 계획이 되고 주소의 `#` 가 지워지는지
+- 지울 계획이 있는 탭에 다른 계획의 링크가 오면 묻고, 묻는 동안 링크가 주소창에 남아 새로 고쳐도 다시 묻고, '저장된 계획 유지'가 계획을 두고 링크를 지우는지
+- 손으로 만든 링크(`Status` 줄 둘, LV -99999 인 `Status` 줄)를 1.5초 안에 거절하고 계획이 그대로인지
+- 붙여넣은 로그를 불러오면 같은 계획이 되는지, 콘솔에 오류·경고가 없는지
+
+공유 링크 왕복에서 알려진 예외 하나: 조작 0회인 계획(처음까지 되돌린 계획 등)의 로그 첫머리 `Bonus` 줄은 원본이 기록 맨 앞 칸에 덧쓴 값이라
+받는 쪽에서 같은 글로 다시 만들 수 없다(원본도 같다). 보너스 값은 링크의 `b` 로 같아진다(`web/js/app.js` 의 `linkCandidate`).
+
+### `web-diff.js`
+
+`web/index.html` 을 `file://` 로 열고 진짜 입력(키, 클릭, 타자)으로만 움직인다. 같은 입력을 원본(`harness.js` 의 `createOracle()`)에도 넣는다.
+화면이 엔진에 보낸 값을 받아 쓰지 않고, 사람이 원본에서 했을 입력을 그대로 넣는다. 화면에서 꺼진 단추를 누르거나 확인 창에서 취소하면 원본에는
+아무것도 넣지 않는다. 조작마다 다음을 맞춘다.
+- 캐릭터/타입, LV, POINT, 일곱 스탯의 값·필요 포인트·비용이 오르는 값, HP/MP/SP 값과 범위, 보너스 칸과 보너스 기록, 단추가 켜져 있는지,
+  주력 계열의 선택과 고를 수 있는 줄, ▲ 표시와 '직전 조작', 로그 표의 줄, 화면에 NaN/undefined 가 없는지, 콘솔
+- '복사'가 클립보드에 넣는 글(재분배 로그, 육성 가이드) = 원본의 `logOut()`/`recipe()` 글(줄바꿈 `\r\n`)
+- 대시 단추의 'N까지'와 '다음 레벨업'을 원본 사본에서 실제로 해 본 결과와, POINT 밑 한 줄('STAB 3회(12) 찍으면 2 남음' 등)을 원본 사본에서
+  +1 을 그만큼 눌러 본 결과와
+- 확인 창의 글, 로그 불러오기 뒤의 안내, 붙여넣은 로그 칸을 비우는지, 보이는 육성 가이드 패널
+
+너비 셋(1440 × 900, 1024 × 768, 390 × 844)을 돌아가며 쓴다. 무작위 조작 전에 정해 둔 순서 18개(로아미니, LV 285, 스탯 상한, 스탯 편집,
+편집을 넘는 되돌리기, 불러오기 뒤 되돌리기, 일본어판 로그, 중간에 멈추는 불러오기, 처음까지 되돌린 계획, 설정 줄만 있는 글, 스탯 편집 빈 칸 등)를 돌린다.
+어긋나면 seed, 몇 번째 조작인지, 조작 목록, 다른 칸을 찍고 그 seed 를 멈춘다. 끝에 'refused-but-changed'(원본처럼 중간에 멈춘 불러오기 뒤에
+거절된 ←/→/대시가 비용 숫자를 바로잡은 횟수)를 세어 찍는다. 차이가 아니다.
+
+| 환경 변수 | 뜻 |
+|---|---|
+| `WEBDIFF_PROBE=n` | n 조작마다 일곱 대시와 다음 레벨업을 원본 사본에서 실제로 해 본다(기본 5, 0 이면 끈다) |
+| `WEBDIFF_SCRIPTS=0` / `only` / `only:글자` | 정해 둔 순서를 건너뛴다 / 그것만 돌린다 / 이름에 그 글자가 든 것만 돌린다 |
+| `WEBDIFF_EMPTY=1` | 스탯 편집에서 칸을 비우는 입력도 넣는다(화면도 원본 Flex 처럼 빈 칸을 그 칸의 최솟값으로 읽는다) |
+| `WEBDIFF_VERBOSE=1` | 조작을 하나씩 찍는다 |
+| `WEBDIFF_SHOTS=폴더` | 어긋난 곳의 화면을 그 폴더에 남긴다 |
+| `WEBDIFF_WEB=폴더` | `web/` 대신 그 폴더의 `index.html` 을 연다(일부러 고장 낸 화면을 이 시험이 잡아내는지 볼 때) |
+| `WEBDIFF_TRACE=폴더` | 어긋나면 화면 조작과 원본에 넣은 조작(JSON)을 그 폴더에 남긴다 |
+
+이 시험이 실제로 어긋남을 잡는지는 `app.js` 를 일부러 고장 낸 사본 24가지(`WEBDIFF_WEB`)로 확인했다(대시 이름표를 초록 숫자에서 읽기,
+복사 줄바꿈 `\n`, 보너스 칸에 친 값을 그대로 보이기, 로그 보기에 `logPane()` 쓰기, 스탯 편집으로 시작한 계획을 지울 때 묻지 않기 등).
 
 ## 차등 퍼저가 지나가는 경우
 
