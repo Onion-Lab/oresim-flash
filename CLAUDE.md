@@ -407,8 +407,8 @@
 | `node tests/web-diff.js [seeds=20] [steps=150] [firstSeed=1]` | (Playwright) `file://`로 연 화면을 진짜 입력으로만 움직이고 같은 입력을 원본(하네스)에도 넣어, 조작마다 화면의 글자를 원본 상태와 비교한다(세 너비, 정해 둔 순서 18개 + 무작위) | `2 60` 약 2분 20초, `10 120` 약 7분 |
 
 - Playwright 시험 둘은 `require('playwright')`가 안 되거나 브라우저를 띄우지 못하면 그렇게 말하고 종료 코드 0으로 끝난다(저장소는 npm을 쓰지 않는다).
-- 마지막 확인(2026-10-31): `engine-diff 300 400`과 `web-diff 10 120`(seed 1~10) 어긋남 0(마지막 문구 수정 직전 판). 최종 판에서 `web-diff`의 정해 둔 순서 18개와
-  seed 201~203 어긋남 0, `web-smoke` 모두 통과, `engine-diff 20 400 777`·`engine-invariants` 통과, Taste Skill lint 0 FAIL/0 WARN, inspect 0 FAIL.
+- 마지막 확인(2026-10-31): `engine-diff 300 400`과 `web-diff 10 120`(seed 1~10) 어긋남 0(마지막 문구 수정 직전 판). 최종 판에서 `web-diff 8 120 201`(정해 둔 순서 18개와
+  seed 201~208, 조작 1,212개) 어긋남 0, `web-smoke` 모두 통과, `engine-diff 20 400 777`·`engine-invariants` 통과, Taste Skill lint 0 FAIL/0 WARN, inspect 0 FAIL.
 
 ### 배포
 
