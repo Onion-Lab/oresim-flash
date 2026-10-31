@@ -199,6 +199,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 /* 저장 상태: 빌더의 상태 알약, 그것이 가리키는 시트처럼 안개 위의 흰색 */
 .saved { display: inline-flex; align-items: center; gap: 6px; flex: none; height: 24px; padding: 0 10px 0 8px; border-radius: 999px; background: var(--surface); color: var(--muted); font-size: var(--fs-small); line-height: 16px; white-space: nowrap; }
 .saved svg { width: 14px; height: 14px; color: var(--positive); }
+.saved.is-off svg, .sheet-saved.is-off svg { color: var(--negative); }   /* 저장 안 됨: 빨강은 작은 아이콘에만 */
 
 .sound { display: flex; align-items: center; gap: 4px; flex: none; }
 #mute .off, .sound-off #mute .on { display: none; }
@@ -234,12 +235,40 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 .char[aria-current="true"] { background: var(--surface); }
 .char[aria-current="true"] .char-name { font-weight: 600; }
 
+/* 출처와 권리: 조용히(12px, 흐린 글자). 옆 팔이 넓게 보이는 너비에서는 그 맨 아래, 그 밖에서는 페이지 끝 */
+.credit { color: var(--muted); font-size: var(--fs-small); line-height: 16px; }
+.credit p + p { margin-top: 4px; }
+.credit a { text-decoration: underline; text-underline-offset: 2px; border-radius: 2px; white-space: nowrap; }   /* 'Apache License 2.0'은 한 덩어리 */
+@media (hover: hover) and (pointer: fine) { .credit a:hover { color: var(--text); } }
+.credit-rail { margin-top: auto; padding: 20px 8px 0; }
+.credit-page { display: none; margin-top: var(--gap); }
+/* 옆 팔에 둘 자리가 없는 낮은 창(900px 아래: 16명 아래에 남는 자리가 없다)에서는 옆 팔이 스크롤하지 않게 페이지 끝으로.
+   그런 창에서는 페이지가 이미 스크롤한다. 1440 × 900 에서는 옆 팔 맨 아래(884px에서 끝난다) */
+@media (max-height: 899px) {
+  .credit-rail { display: none; }
+  .credit-page { display: block; }
+}
+/* 900px 이상인 창이라도 옆 팔 맨 아래에 두면 옆 팔이 넘쳐 스크롤하게 되면(웹 글꼴을 받지 못해 대체 글꼴이 넓을 때, 글자를 키웠을 때)
+   페이지 끝으로. app.js 가 재서 .credit-low 를 단다 */
+.credit-low .credit-rail { display: none; }
+.credit-low .credit-page { display: block; }
+
 /* ---------- 흰 시트 ---------- */
 .sheet {
   grid-column: 2; grid-row: 2; min-width: 0; min-height: calc(100svh - var(--topbar) - var(--sheet-inset));
   margin: 0 var(--sheet-inset) var(--sheet-inset) 0; padding: var(--pad);
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sheet);
 }
+
+/* 자바스크립트가 꺼졌을 때의 한 줄 */
+.noscript { margin-bottom: var(--gap); font-weight: 500; }
+/* 알림 한 줄(막지 않는다): 시트 맨 위의 테두리 상자 하나. 빨강은 작은 아이콘에만, 닫기 단추로 치운다 */
+.notice { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 16px; padding: 6px 6px 6px 12px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); }
+.notice-text { display: flex; align-items: flex-start; gap: 8px; flex: 1; min-width: 0; padding: 6px 0; line-height: 20px; }
+.notice-text svg { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--muted); }
+.notice[data-tone="error"] .notice-text svg { color: var(--negative); }
+.notice .icon-btn { flex: none; }
+.notice.is-new { animation: msg-in var(--t-ui) var(--ease-out) both; }
 
 /* 제목 줄: 캐릭터, 발견, 이 계획의 두 조작 */
 .title-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px 16px; }
@@ -303,6 +332,14 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 .s-act { grid-area: act; display: flex; justify-content: flex-end; gap: 6px; }
 .s-act .up { width: 60px; padding: 0 8px; }
 .s-act .dash { width: 104px; padding: 0 8px 0 10px; justify-content: space-between; }
+/* 641px부터 키 표시는 줄어들지 않고(글자 간격을 넓혀도 키 글자가 표시 밖으로 넘치지 않게) 대시 단추가 그만큼 넓어진다.
+   평소에는 104px 그대로: 이름과 키 사이의 최소 간격을 3px로 두면 세 자리 'N까지'와 가장 넓은 키(⇧X)도 104px에 든다
+   (간격은 space-between 이 나누므로 두 자리일 때는 그대로다) */
+@media (min-width: 641px) {
+  .s-act kbd { flex: none; }
+  .s-act .dash { gap: 3px; }
+}
+@media (min-width: 741px) { .s-act .dash { width: auto; min-width: 104px; } }
 /* 발견의 스탯: 그 줄에 옅은 채움, 로그의 말(몰빵 중)을 표지로 */
 .srow.focus { background: var(--raised); margin: 0 -8px; padding: 0 8px; }
 .srow.focus + .srow { border-top-color: transparent; }
@@ -348,9 +385,9 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 .stepper { display: inline-flex; align-items: center; height: var(--control-height); border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--surface); }
 .stepper button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text); transition: background-color var(--t-hover) ease, transform var(--t-press) var(--ease-out); }
 .stepper button svg { width: 12px; height: 12px; }
-@media (hover: hover) and (pointer: fine) { .stepper button:not(:disabled):hover { background: var(--ground); } }
-.stepper button:not(:disabled):active { transform: scale(0.92); }
-.stepper button:disabled { color: var(--faint); cursor: not-allowed; }
+@media (hover: hover) and (pointer: fine) { .stepper button:not(:disabled, [aria-disabled="true"]):hover { background: var(--ground); } }
+.stepper button:not(:disabled, [aria-disabled="true"]):active { transform: scale(0.92); }
+.stepper button:disabled, .stepper button[aria-disabled="true"] { color: var(--faint); cursor: not-allowed; }
 .stepper input { width: 34px; height: 30px; padding: 0; border: 0; background: transparent; text-align: right; font-weight: 500; -moz-appearance: textfield; appearance: textfield; }
 .stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .stepper input:focus-visible { outline-offset: 0; }
@@ -358,7 +395,10 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 .record { color: var(--muted); white-space: nowrap; }
 .record b { color: var(--text); font-weight: 500; }
 /* ▲ 표시의 기준: 직전 조작(그림 열쇠는 표시 그대로) */
-.last { display: flex; align-items: center; flex-wrap: wrap; gap: 0 6px; margin-top: 12px; color: var(--muted); font-size: var(--fs-small); line-height: 16px; }
+.last { display: flex; align-items: flex-start; gap: 0 6px; margin-top: 12px; color: var(--muted); font-size: var(--fs-small); line-height: 16px; }
+/* ▲ 는 글의 첫 줄 가운데에(8px 표시, 16px 줄). 글이 길어도 ▲ 만 혼자 윗줄에 남지 않고 글 안에서 줄이 바뀐다 */
+.last .chg { flex: none; margin-top: 4px; }
+.last-words { min-width: 0; }
 
 /* 주력 계열: 테두리 없는 두 칸 라디오 목록. 고른 계열은 바다색 점과 굵은 이름 */
 .xien-list { display: grid; grid-template-columns: repeat(2, minmax(0, 180px)); column-gap: 24px; margin: 0; padding: 0; border: 0; min-width: 0; }
@@ -473,7 +513,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 .loader textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
 .loader-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .loader-msg { display: flex; align-items: flex-start; gap: 6px; min-height: 0; color: var(--text); font-size: var(--fs-small); line-height: 18px; }
-.loader-msg:empty { display: none; }
+.loader-msg:empty { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }   /* 비어 있어도 실시간 알림 자리는 남긴다 */
 .loader-msg svg { flex: none; width: 14px; height: 14px; margin-top: 2px; }
 .loader-msg[data-tone="error"] svg { color: var(--negative); }
 .loader-msg[data-tone="ok"] svg { color: var(--positive); }
@@ -514,6 +554,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 .gear .g-meta { color: var(--muted); font-size: var(--fs-small); }
 .gear summary svg { width: 16px; height: 16px; margin-left: auto; color: var(--muted); transition: transform var(--t-ui) var(--ease-out); }
 .gear[open] summary svg { transform: rotate(180deg); }
+.gear summary:focus-visible { outline-offset: -2px; }   /* 가이드 칸(스크롤 상자) 끝까지 닿는 줄: 고리를 안쪽에 그린다 */
 .gear[open] summary { margin-bottom: 6px; }
 @media (hover: hover) and (pointer: fine) { .gear summary:hover { background: var(--raised); } }
 /* 재분배 순서: 설정이 바뀌는 곳은 바다색 점이 붙은 굵은 제목 줄, 찍기 줄은 스탯 이름을 굵게, 레벨은 오른쪽, 필요 포인트는 그 아래 */
@@ -578,6 +619,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 .sheet-dialog.is-closing { transition-duration: 220ms; }
 .sheet-dialog .dialog-body { gap: 14px; padding: 8px 16px calc(20px + env(safe-area-inset-bottom)); }
 .sheet-dialog .dialog-head { min-height: 48px; }
+#char-sheet { scroll-padding-block: 8px; }   /* 키보드로 옮긴 초점이 시트 끝에 붙어 고리가 잘리지 않게 */
 .close-btn { margin-right: -8px; }
 .sheet-types { display: flex; align-items: center; gap: 12px; }
 .sheet-label { color: var(--muted); font-size: var(--fs-small); }
@@ -628,6 +670,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
   transition: opacity var(--t-ui) var(--ease-out), transform var(--t-ui) var(--ease-out), overlay var(--t-ui) allow-discrete, display var(--t-ui) allow-discrete;
 }
 .keys-pop:popover-open { opacity: 1; transform: none; }
+.keys-pop:focus, .keys-pop:focus-visible { outline: none; border-radius: var(--radius-card); }
 @starting-style { .keys-pop:popover-open { opacity: 0; transform: translateY(-4px); } }
 .keys-title { margin-bottom: 8px; font-size: var(--fs-section); line-height: 24px; font-weight: 600; }
 .keys-list { display: grid; grid-template-columns: 156px minmax(0, 1fr); column-gap: 16px; row-gap: 2px; margin: 0; }
@@ -645,7 +688,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 @media (min-width: 1600px) {
   :root { --rail: 400px; --srow: 96px 44px 24px 48px minmax(184px, 1fr) auto; }
   .stair { flex-basis: 300px; }
-  .title-row, .board { max-width: 1360px; margin-inline: auto; }
+  .title-row, .board, .notice, .noscript, .credit-page { max-width: 1360px; margin-inline: auto; }
   /* 상단 바의 두 무리가 묶인 내용의 양 끝 위에 선다: 범위는 왼쪽 끝, 레벨업은 오른쪽 끝 */
   /* --vw 는 스크롤 막대를 뺀 너비(app.js가 넣는다, 그 전에는 100vw) */
   :root { --cap-side: max(0px, (var(--vw) - var(--sidebar-width) - var(--sheet-inset) - 2px - 2 * var(--pad) - 1360px) / 2); }
@@ -676,6 +719,8 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
   .char-types { display: none; }
   .char-start { display: block; color: var(--muted); font-size: var(--fs-small); line-height: 14px; white-space: nowrap; }
   .brand { width: auto; }
+  .credit-rail { display: none; }                  /* 76px 팔에는 들어가지 않으므로 페이지 끝으로 */
+  .credit-page { display: block; }
 }
 /* 1101–1179: 로그가 보드 아래로 내려온다. 음량은 캐릭터 패널로 */
 @media (max-width: 1179px) {
@@ -709,6 +754,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
   html { scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom)); }   /* 초점이 아래쪽 고정 바 밑에 숨지 않게 */
   .app { grid-template-columns: minmax(0, 1fr); }
   .sidebar { display: none; }
+  .credit-page { display: block; }
   .topbar { padding: 0 24px; }
   .brand { width: auto; }
   .history, .tb-div, .sound .vol { display: none; }
@@ -731,6 +777,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 @media (max-width: 860px) {
   .saved { display: none; }
+  .saved.is-off { display: inline-flex; }   /* 저장이 막혔을 때는 스크롤해도 보이는 상단 바에 */
   .level-card { grid-template-columns: minmax(0, 1fr); }
   .half + .half { border-left: 0; border-top: 1px solid var(--border); }
   /* 제목 줄의 두 조작은 오른쪽에 남는다(세 번째 줄로 떨어져 왼쪽에 매달리지 않게) */
@@ -754,7 +801,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
   .strip-vitals .cell-value .fig { line-height: 28px; }
   .srow.head { display: none; }
   .srow {
-    grid-template-columns: 52px auto minmax(0, 1fr) 60px 104px;
+    grid-template-columns: 52px auto minmax(0, 1fr) 60px minmax(104px, max-content);
     grid-template-areas: "name val . up dash" "cost stair stair stair stair";
     column-gap: 8px; row-gap: 6px; padding: 10px 0;
   }
@@ -770,7 +817,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
   .s-stair .stair { flex: 1 1 auto; min-width: 72px; }
   .s-act { display: contents; }
   .s-act .up { grid-area: up; }
-  .s-act .dash { grid-area: dash; }
+  .s-act .dash { grid-area: dash; width: auto; }   /* 칸(104px부터 내용만큼)을 채운다 */
   .log-tools .meta { flex: 1; }
 }
 /* 640px 이하: 휴대폰 */
@@ -881,6 +928,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
   input.vol { height: 44px; }
   .loader textarea { min-height: 44px; height: 44px; }
   .loader textarea:focus, .loader textarea:not(:placeholder-shown) { height: 112px; }
+  .credit a { padding-block: 13px; }   /* 글줄 안의 링크: 줄 높이는 그대로 두고 누르는 자리만 44px */
 }
 @media (pointer: coarse) and (min-width: 641px) { .stepper input { width: 44px; } }   /* 휴대폰에서는 한 줄에 맞게 그대로 */
 /* 키 표시는 손가락 아래에서는 뜻이 없다: 터치 화면에서만 숨긴다(정밀한 포인터면 너비와 상관없이 보인다) */
@@ -906,8 +954,18 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
   .xien-opt:has(input:disabled) { color: GrayText; }
   .xien-opt:has(input:disabled) input { border-color: GrayText; }
   .segmented button[aria-pressed="true"] { border: 2px solid Highlight; color: Highlight; }
-  .char[aria-current="true"], .cast [aria-current="true"] img { outline: 2px solid Highlight; outline-offset: -2px; }
-  .btn:disabled, .btn[aria-disabled="true"], .stepper button:disabled { color: GrayText; border-color: GrayText; }
+  .char[aria-current="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
+  /* 캐릭터 시트: 지금 캐릭터만 테두리. 평소의 투명한 테두리가 강제 색상에서 글자색으로 칠해지지 않게 그림은 제 색 그대로 두고
+     (그림에는 바꿀 색이 테두리뿐이다), 지금 캐릭터만 시스템 강조색으로 그림 밖에 두른다 */
+  .cast img { forced-color-adjust: none; }
+  .cast [aria-current="true"] img { outline: 3px solid Highlight; outline-offset: 1px; }
+  .cast button:not([aria-current="true"]):hover img { outline-color: GrayText; }
+  /* 효과음 스위치: 바탕만으로 그린 스위치는 사라지므로 테두리와 시스템 색으로 다시 그린다 */
+  .switch { forced-color-adjust: none; background: Canvas; border: 1px solid CanvasText; }
+  .switch::after { top: 1px; left: 1px; background: CanvasText; }
+  .switch:checked { background: Highlight; border-color: Highlight; }
+  .switch:checked::after { background: HighlightText; }
+  .btn:disabled, .btn[aria-disabled="true"], .stepper button:disabled, .stepper button[aria-disabled="true"] { color: GrayText; border-color: GrayText; }
   .log-table .set-text::before, .order li.chapter::before { forced-color-adjust: none; background: CanvasText; }
   #log-table thead th::after { forced-color-adjust: none; background: CanvasText; }   /* 붙은 제목의 밑줄(배경으로 그린 1px) */
   .loader-msg svg { forced-color-adjust: auto; }
@@ -918,7 +976,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
   .btn:active, .btn.is-pressed, .char:active, .segmented button:active, .cast button:active, .stepper button:active, .scope:active, .icon-btn:active, .xien-opt:active { transform: none !important; }
   .dialog, .sheet-dialog, .pop, .lab > span, .keys-pop { transform: none !important; }
   .tab-ink, .gear summary svg, .loader textarea { transition: none; }
-  .xien-opt input::before { transition: none; }
+  .xien-opt input::before, .switch::after { transition: none; }
   @keyframes chg-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes fig-tick { from { opacity: 0.35; } to { opacity: 1; } }
   @keyframes row-in { from { opacity: 0; } to { opacity: 1; } }
