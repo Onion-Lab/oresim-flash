@@ -298,7 +298,7 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 .cell.lead-cell { padding-left: 0; border-left: 0; }
 .cell-label { color: var(--muted); font-size: var(--fs-small); line-height: 16px; }
 /* 다섯 숫자가 한 기준선에: 줄마다 36px 글자의 받침(strut)을 두고 숫자는 그 기준선에 앉힌다.
-   그래서 '/ 285'나 ▲ 표시가 줄 높이를 바꾸지 않고, 글자 간격을 넓혀도 겹치지 않는다(고정 행 없음) */
+   그래서 '/ 255'나 ▲ 표시가 줄 높이를 바꾸지 않고, 글자 간격을 넓혀도 겹치지 않는다(고정 행 없음) */
 .cell-value { font-size: var(--fs-kpi); line-height: 44px; white-space: nowrap; }
 .cell-value .fig { font-size: var(--fs-figure); font-weight: 400; line-height: 1; }
 .cell-value.lead .fig { font-size: var(--fs-kpi); letter-spacing: -0.02em; }

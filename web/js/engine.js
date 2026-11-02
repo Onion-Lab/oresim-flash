@@ -27,7 +27,7 @@
   'use strict';
 
   var Oresim = globalThis.Oresim = globalThis.Oresim || {};
-  var ENGINE_VERSION = '1';
+  var ENGINE_VERSION = '2';
 
   // ---- 반복 안전장치 ----
   // 원본에는 Flash 의 스크립트 시간 제한(Flex 기본 60초, Error #1502)밖에 없다. 그 시점은 PC 속도에 따라 달라 흉내 낼 수 없으므로,
@@ -43,9 +43,9 @@
   // oresim.mxml 의 NumericStepper: [minimum, maximum, stepSize, 처음 value]
   var STEPPER_DEFS = {
     bonusNS: [0, 100, 5, 50],
-    slv: [1, 285, 1, 255],
-    ss0: [1, 285, 1, 255], ss1: [1, 285, 1, 255], ss2: [1, 285, 1, 255], ss3: [1, 285, 1, 255],
-    ss4: [1, 285, 1, 255], ss5: [1, 285, 1, 255], ss6: [1, 285, 1, 255],
+    slv: [1, 255, 1, 255],
+    ss0: [1, 255, 1, 255], ss1: [1, 255, 1, 255], ss2: [1, 255, 1, 255], ss3: [1, 255, 1, 255],
+    ss4: [1, 255, 1, 255], ss5: [1, 255, 1, 255], ss6: [1, 255, 1, 255],
     ss7: [1, 22000, 1, 20000], ss8: [1, 7000, 1, 5000], ss9: [1, 12000, 1, 9999],
     ss11: [0, 9999, 1, 9999]
   };
@@ -881,7 +881,7 @@
       T.s11 = String(parseInt(T.s11) + BONUS_STATUS_POINT[parseInt(T.lv) - 1]);
       logging();
       stLog[parseInt(T.lv) - 1] = '';
-      for (var l = 0; l < parseInt(T.lv); l++) {   // LV < 285 일 때만 오므로 반복 한도를 세지 않는다
+      for (var l = 0; l < parseInt(T.lv); l++) {   // LV < MAX_LEVEL 일 때만 오므로 반복 한도를 세지 않는다
         tmpStLog[l] = stLog[l];
       }
       if (logindex > 0) {

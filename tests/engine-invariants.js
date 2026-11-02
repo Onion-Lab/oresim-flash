@@ -37,6 +37,7 @@ function loadOresim() {
 }
 const Oresim = loadOresim();
 const C = Oresim.CONST;
+const MAX_LV = C.MAX_LEVEL;   // 최고 레벨과 스탯 상한은 표에서 읽는다
 
 // mulberry32
 const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -230,7 +231,7 @@ for (const [group, feats] of Object.entries(FEATURES)) {
         else if (r < 0.77) { const v = pick(garbage ? [0, 25, 50, 75, 100, 7, 103, -5, 'abc'] : [0, 25, 50, 75, 100]); call(E, group, who, trace, 'setBonus', v); trace.push('B' + v); }
         else if (r < 0.81) { const x = pick(E.view().xien.lines).x; call(E, group, who, trace, 'setXien', x); trace.push('X' + x); }
         else if ((r < 0.85 || (st < 3 && r < 0.93)) && feats.includes('edit')) {
-          const v = garbage && chance(0.4) ? { lv: pick([0, 300, 'abc', 7.5]), stats: [pick([0, 999, 'x']), 285, 285], point: pick([-1, 99999, '']), lines: [{ x: E.view().xien.lines[0].x, value: pick(['abc', '-5', 1e21, '']) }] } : randomEdit(E);
+          const v = garbage && chance(0.4) ? { lv: pick([0, 300, 'abc', 7.5]), stats: [pick([0, 999, 'x']), C.MAX_STATUS[1], C.MAX_STATUS[2]], point: pick([-1, 99999, '']), lines: [{ x: E.view().xien.lines[0].x, value: pick(['abc', '-5', 1e21, '']) }] } : randomEdit(E);
           call(E, group, who, trace, 'editCommit', v); trace.push(`EDIT(L${v.lv})`);
         } else if (r < 0.91 && feats.includes('undo')) {
           const k = 1 + ri(6), dash = chance(0.3);
@@ -317,7 +318,7 @@ for (const [name, text, same2] of [
   ['budget.range', 'LV 1 - 999999999 : STAB', 'LV 1 - 2000 : STAB'],
   ['budget.allin', 'LV 1 - 999999999 : STAB 몰빵 3회', 'LV 1 - 2000 : STAB 몰빵 3회'],
   ['budget.times', 'LV 2 : STAB * 999999999', 'LV 2 : STAB * 50'],
-  ['budget.timesHuge', 'LV 2 - 285 : STAB * 1' + '0'.repeat(400) + ', DEX * 9999', 'LV 2 - 285 : STAB * 999, DEX * 999'],
+  ['budget.timesHuge', `LV 2 - ${MAX_LV} : STAB * 1` + '0'.repeat(400) + ', DEX * 9999', `LV 2 - ${MAX_LV} : STAB * 999, DEX * 999`],
   ['budget.status', 'Status : -999999999' + STATUS_TAIL, null],
 ]) {
   special(name, () => {
@@ -338,7 +339,7 @@ for (const [name, text, same2] of [
 }
 // 반복 안전장치 2: 끝이 없는 입력(레벨업·투자가 실제로 수억 번 일어난다)은 한도에서 멈추고(error), 엔진은 계속 쓸 수 있다
 for (const [name, text] of [
-  ['limit.negativeLv', 'Status : -999999999' + STATUS_TAIL + '\rLV -999999998 - 285 : STAB'],
+  ['limit.negativeLv', 'Status : -999999999' + STATUS_TAIL + `\rLV -999999998 - ${MAX_LV} : STAB`],
   ['limit.negativeStat', 'Status : 100, 10, 50, 0, 0, 0, -999999999' + STATUS_TAIL.slice(STATUS_TAIL.indexOf(', 3,')) + '\rLV 100 : STAB 몰빵 1회'],
 ]) {
   special(name, () => {
@@ -365,7 +366,7 @@ special('budget.undoHugeLv', () => {
 // 최고 레벨에서 포인트가 모자란 대시: ok: false, 소리 없음, 상태 그대로(로그 상자만 원본처럼 새로 쓰일 수 있다)
 special('dash.noop', () => {
   const E = Oresim.createEngine();
-  E.editCommit({ lv: 285, point: 0, stats: [285, 285, 284, 10, 10, 10, 10] });
+  E.editCommit({ lv: MAX_LV, point: 0, stats: [C.MAX_STATUS[0], C.MAX_STATUS[1], C.MAX_STATUS[2] - 1, 10, 10, 10, 10] });
   const before = JSON.stringify(Object.assign(E._debugState(), { logText: '' }));
   const r = E.dash(2), p = E.previewDash(2);
   if (r.ok !== false || r.sound !== null || p !== null) return `dash ${JSON.stringify(r)}, previewDash ${JSON.stringify(p)}`;

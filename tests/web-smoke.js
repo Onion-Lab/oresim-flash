@@ -1,7 +1,7 @@
 // 웹 화면 연기 시험(smoke test): web/ 을 내보내고 진짜 브라우저(Playwright의 Chromium)로 연다.
 // 확인하는 것: 시작, 진짜 키와 클릭으로 한 몇 가지 조작, 화면의 숫자 = OresimUI.engine().view() (와 대시 이름표 =
 // previewDash), 새로 고침 뒤 되살리기(되돌리기 기록까지), 공유 링크 왕복, 지울 계획이 있을 때 링크를 묻는 동안 주소창에 남는 링크,
-// 손으로 만든 무거운 링크의 거절, 붙여넣은 로그 왕복, 깨끗한 콘솔.
+// 손으로 만든 무거운 링크의 거절, 붙여넣은 로그 왕복, 앞 판 엔진의 자동 저장(로그에서 다시 만들기), 깨끗한 콘솔.
 // 공유 링크 왕복에서 알려진 예외 하나: 조작 0회인 계획(처음까지 되돌린 계획 등)의 로그 첫머리 'Bonus' 줄은 원본이 기록 맨 앞 칸에
 // 덧쓴 값이라 받는 쪽에서 같은 글로 다시 만들 수 없다(원본도 같다). 보너스 값은 링크의 b 로 같아진다(web/js/app.js 의 linkCandidate).
 // 저장소는 npm 을 쓰지 않는다: playwright 를 불러오지 못하거나 브라우저를 띄우지 못하면 그렇게 말하고 0 으로 끝낸다.
@@ -165,9 +165,10 @@ const decodeLink = (link) => {
 
     // ---- 손으로 만든 링크(Status 줄 둘, 음수 LV): 엔진이 몇 초씩 일하게 하는 글이라 읽지 않고 곧바로 거절한다 ----
     const status = (lv) => 'Status       : ' + [lv, 0, 50, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 9999, 1, 1, 1, 0, 1, 1, 1, 0].concat(Array(52).fill(0)).join(',');
-    for (const [what, lines] of [['two Status lines', [status(1), 'LV   1 - 285 : STAB', status(1), 'LV   1 - 285 : STAB']], ['a Status line with LV -99999', [status(-99999), 'LV -99999 - 285 : STAB']]]) {
+    const maxLv = await page.evaluate(() => window.Oresim.CONST.MAX_LEVEL);   // 최고 레벨(표에서 읽는다)
+    for (const [what, lines] of [['two Status lines', [status(1), `LV   1 - ${maxLv} : STAB`, status(1), `LV   1 - ${maxLv} : STAB`]], ['a Status line with LV -99999', [status(-99999), `LV -99999 - ${maxLv} : STAB`]]]) {
       const t0 = Date.now();
-      await page.evaluate((h) => { location.hash = h; }, hashOf({ v: 1, log: lines.concat('루시안/물리복합 Bonus: 0 / 284 Point: 0').join('\n'), b: 50, x: 0 }));
+      await page.evaluate((h) => { location.hash = h; }, hashOf({ v: 1, log: lines.concat(`루시안/물리복합 Bonus: 0 / ${maxLv - 1} Point: 0`).join('\n'), b: 50, x: 0 }));
       await page.waitForSelector('#confirm[open]', { timeout: 5000 });
       const ms = Date.now() - t0;
       q = await asking();
@@ -195,6 +196,34 @@ const decodeLink = (link) => {
     const msg = await page3.evaluate(() => document.querySelector('#load-msg').textContent.replace(/ /g, ' '));
     ok(loaded.log === now.log, `pasted log → 로그 불러오기 rebuilds the same plan ("${msg}")`);
     await ctx3.close();
+
+    // ---- 앞 판(ENGINE_VERSION 이 다른 엔진)의 자동 저장: 엔진 상태로는 되살리지 못해 저장된 로그에서 다시 만들어 알리고, 지금 판으로 다시 저장한다 ----
+    const old = await page.evaluate(() => {
+      const C = window.Oresim.createEngine();
+      for (let i = 0; i < 5; i++) { C.levelUp(); C.statUp(0); }
+      const v = C.view();
+      const engine = JSON.parse(JSON.stringify(C.serialize()));
+      engine.v = '1';                                                    // 앞 판의 엔진 상태
+      const log = C.exportLog();
+      const rec = { v: 1, engine, log, b: v.bonus.rate, x: v.xien.selected, savedAt: '2026-10-31T00:00:00.000Z' };
+      const W = window.Oresim.createEngine();                           // 받는 쪽이 만들어야 할 계획
+      W.importLog(log); W.setBonus(rec.b); W.setXien(rec.x);
+      return { rec, want: W.exportLog(), version: window.Oresim.ENGINE_VERSION };
+    });
+    const ctx4 = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await ctx4.addInitScript((p) => { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('oresim:plan', p); sessionStorage.setItem('seeded', '1'); } }, JSON.stringify(old.rec));
+    const page4 = await newPage(ctx4);
+    await page4.goto(base + 'index.html');
+    await page4.waitForTimeout(600);
+    const s = await page4.evaluate(() => {
+      let rec = null;
+      try { rec = JSON.parse(localStorage.getItem('oresim:plan')); } catch (_) { rec = null; }
+      const n = document.querySelector('#notice');
+      return { log: window.OresimUI.engine().exportLog(), notice: n.hidden ? '' : document.querySelector('#notice-text').textContent.replace(/\u2060/g, ''), rec };
+    });
+    ok(s.log === old.want && s.notice === '저장된 계획을 재분배 로그에서 다시 만들었습니다. 되돌리기 기록은 이어지지 않습니다.' && s.rec && s.rec.engine && s.rec.engine.v === old.version,
+      `an autosave from an older engine is rebuilt from its log, says so, and is saved again as engine '${s.rec && s.rec.engine && s.rec.engine.v}' ("${s.notice}")`);
+    await ctx4.close();
     await ctx.close();
     ok(logs.length === 0, 'console clean' + (logs.length ? `: ${logs.join(' | ')}` : ''));
   } catch (e) {

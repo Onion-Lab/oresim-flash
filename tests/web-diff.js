@@ -28,7 +28,7 @@
  * 저장소는 npm 을 쓰지 않는다: playwright 를 불러오지 못하거나 브라우저를 띄우지 못하면 그렇게 말하고 0 으로 끝낸다.
  * 사용법(저장소 맨 위에서): node tests/web-diff.js [seeds=20] [steps=150] [firstSeed=1]
  *   WEBDIFF_PROBE=n    n 조작마다 일곱 대시와 다음 레벨업을 원본 사본에서 실제로 해 본다(기본 5, 0 이면 끈다)
- *   WEBDIFF_SCRIPTS=0  정해 둔 순서(로아미니, LV 285, 스탯 상한, 스탯 편집, 편집을 넘는 되돌리기, 불러오기 뒤 되돌리기 등)를 건너뛴다
+ *   WEBDIFF_SCRIPTS=0  정해 둔 순서(로아미니, 최고 레벨, 스탯 상한, 스탯 편집, 편집을 넘는 되돌리기, 불러오기 뒤 되돌리기 등)를 건너뛴다
  *   WEBDIFF_SCRIPTS=only  정해 둔 순서만 돌린다(only:글자 이면 이름에 그 글자가 든 순서만)
  *   WEBDIFF_EMPTY=1    스탯 편집에서 칸을 비우는 입력도 넣는다(화면도 원본 Flex 처럼 빈 칸을 그 칸의 최솟값으로 읽는다)
  *   WEBDIFF_VERBOSE=1  조작을 하나씩 찍는다
@@ -65,6 +65,19 @@ const PAGE_URL = pathToFileURL(path.join(process.env.WEBDIFF_WEB ? path.resolve(
 // ---- 표와 말 ----
 const STATS = ['STAB', 'HACK', 'INT', 'DEF', 'MR', 'DEX', 'AGI'];
 const SHORTCUT = ['S', 'H', 'I', 'F', 'M', 'X', 'A'];
+// 최고 레벨과 일곱 스탯의 상한: 원본 표(oresim-const.as)에서 읽는다. 상한 둘레의 값(바로 아래, 그 값, 바로 위)도 이것으로 만든다
+const TABLES = H.createSim(H.REPO, { init: false });
+const MAX_LV = TABLES.MAX_LEVEL;
+const STAT_CAP = STATS.map((_, i) => TABLES.MAX_STATUS[i]);
+const CAP_EDGE = [...new Set([MAX_LV, ...STAT_CAP])].flatMap((m) => [m - 1, m, m + 1]);
+// 초록 숫자(원본 updateStatus 의 식)가 스탯 상한과 같아지는 가장 높은 LV 와 그때의 가장 작은 값(상한 255 에서는 LV 229, 230):
+// 그 단계는 찍을 수 없으므로 화면은 '상한 N'이라 한다. 정해 둔 순서 하나가 이 자리를 지난다
+const CAP_STEP = (() => {
+  for (let lv = MAX_LV; lv >= 1; lv--) {
+    for (let v = 1; v < STAT_CAP[0]; v++) if (Math.ceil(25 - lv / 5) + 25 * Math.floor((lv + 5 * v) / 125) === STAT_CAP[0]) return { lv, v };
+  }
+  return null;
+})();
 const NB = '\u00a0';
 const NUM = new Intl.NumberFormat('ko-KR');
 const fmt = (n) => NUM.format(Number(n));
@@ -233,7 +246,7 @@ function readScreen() {
 
 // ---- 기대값: 원본 상태(o)와 ▲ 기준(marks)에서 화면의 글자를 만든다 ----
 function expectNext(o, p) {
-  if (!p) return { meta: '최고 레벨', gains: [{ cls: 'gains-done', dt: '더 받을 레벨업 보상 없음', dd: `LV${NB}${fmt(285)}, 최고 레벨` }] };
+  if (!p) return { meta: '최고 레벨', gains: [{ cls: 'gains-done', dt: '더 받을 레벨업 보상 없음', dd: `LV${NB}${fmt(MAX_LV)}, 최고 레벨` }] };
   const sel = o.xien.lines.find((l) => l.x === o.xien.selected) || o.xien.lines[0];
   const ln = splitLine(sel ? sel.name : '');
   const mi = STATS.indexOf(ln.main), bi = STATS.indexOf(ln.bonus);
@@ -278,7 +291,7 @@ function compareScreen(scr, o, marks, probe, msgs) {
   eq('초기화 안내', scr.resetWhat, `${o.charName}/${o.typeName} LV ${o.startLv} 시작 상태로 되돌립니다. 바꾸기 전에 확인합니다.`);
   eq('POINT', scr.point, fmt(o.point));
   eq('LV', scr.lv, fmt(o.lv));
-  eq('LV 최고', scr.lvUnit, `/${NB}${fmt(285)}`);
+  eq('LV 최고', scr.lvUnit, `/${NB}${fmt(MAX_LV)}`);
   eq('아래 바 POINT', scr.abPoint, fmt(o.point));
   eq('아래 바 LV', scr.abLv, fmt(o.lv));
   [['HP', o.hp], ['MP', o.mp], ['SP', o.sp]].forEach(([k, x], j) => {
@@ -289,12 +302,13 @@ function compareScreen(scr, o, marks, probe, msgs) {
   });
   o.stats.forEach((st, i) => {
     const s = scr.stats[i] || {};
-    const cap = 285;
+    const cap = STAT_CAP[i];
     eq(`${st.key} 줄`, s.key, st.key);
     eq(`${st.key} 값`, s.value, fmt(st.value));
     eq(`${st.key} 필요 포인트`, s.cost, String(st.cost));
-    // 'N부터 M'(초록 숫자에서 비용이 지금 + 1): 초록 숫자가 옛 값이면 원본처럼 숫자만. 상한(값으로 정해진다)은 그때도 '상한 285'
-    eq(`${st.key} 비용이 오르는 값`, s.next, st.atCap ? `상한 ${fmt(cap)}` : o.stale ? fmt(st.next) : st.next > cap ? `상한 ${fmt(cap)}` : `${fmt(st.next)}부터${NB}${st.cost + 1}`);
+    // 'N부터 M'(초록 숫자에서 비용이 지금 + 1): 초록 숫자가 옛 값이면 원본처럼 숫자만. 상한(값으로 정해진다)은 그때도 '상한 N'.
+    // 초록 숫자가 상한과 같으면(상한 255 에서는 LV 100~104·225~229 의 230~254) 그 단계는 찍을 수 없으므로 '상한 N'
+    eq(`${st.key} 비용이 오르는 값`, s.next, st.atCap ? `상한 ${fmt(cap)}` : o.stale ? fmt(st.next) : st.next >= cap ? `상한 ${fmt(cap)}` : `${fmt(st.next)}부터${NB}${st.cost + 1}`);
     eq(`${st.key} +1 꺼짐`, s.upOff, !st.canUp);
     eq(`${st.key} +1 이름`, s.upLabel, `${st.key} +1, ${st.cost}포인트`);
     if (!st.canDash) eq(`${st.key} 대시 꺼짐(원본에서 숨은 단추)`, s.dashOff, true);
@@ -317,10 +331,10 @@ function compareScreen(scr, o, marks, probe, msgs) {
   eq('보너스 + 꺼짐', scr.stepUpOff, o.bonus.rate >= 100);
   eq('되돌리기 꺼짐', scr.undoOff, !o.canUndo);
   eq('다시 실행 꺼짐', scr.redoOff, !o.canRedo);
-  eq('레벨업 꺼짐', scr.levelupOff, o.lv >= 285);
+  eq('레벨업 꺼짐', scr.levelupOff, o.lv >= MAX_LV);
   eq('아래 바 되돌리기 꺼짐', scr.abUndoOff, !o.canUndo);
   eq('아래 바 다시 실행 꺼짐', scr.abRedoOff, !o.canRedo);
-  eq('아래 바 레벨업 꺼짐', scr.abUpOff, o.lv >= 285);
+  eq('아래 바 레벨업 꺼짐', scr.abUpOff, o.lv >= MAX_LV);
   // 주력 계열
   const sel = scr.xien.filter((x) => x.checked).map((x) => x.x);
   eq('주력 계열(고른 줄)', sel.join(','), String(o.xien.selected));
@@ -373,7 +387,7 @@ function garble(R, text, n) {
     () => { if (L.length > 1) L.splice(ri(L.length), 1); },
     () => { const i = ri(L.length); L.splice(i, 0, L[i]); },
     () => { const i = ri(L.length), j = ri(L.length); const t = L[i]; L[i] = L[j]; L[j] = t; },
-    () => { const i = ri(L.length); L[i] = L[i].replace(/\d+/, () => String(pick([0, 1, 2, 5, 30, 150, 284, 285, 286, 999]))); },
+    () => { const i = ri(L.length); L[i] = L[i].replace(/\d+/, () => String(pick([0, 1, 2, 5, 30, 150, ...CAP_EDGE, 999]))); },
     () => { const i = ri(L.length); L[i] = L[i].slice(0, ri(L[i].length + 1)); },
     () => { const i = ri(L.length); L[i] = L[i].replace(/STAB|HACK|INT|DEF|MR|DEX|AGI/, () => pick(STATS.concat(['stab', 'HP']))); },
     () => { const i = ri(L.length); L[i] = L[i].replace(pick([':', ',', '-']), (c) => FW[c]); },
@@ -1038,13 +1052,13 @@ class Run {
     const { ri, pick, chance } = this.R;
     const o = oracleNow(this.S);
     const t = {};
-    const odd = () => pick(['0', '-5', '286', '300', '99999', '7.6', '2.5', '285.5', '-0.4']);
+    const odd = (cap) => pick(['0', '-5', String(cap + 1), '300', '99999', '7.6', '2.5', String(cap + 0.5), '-0.4']);   // cap = 그 칸의 상한
     const k = ri(5);
-    if (k === 1) t.lv = String(Math.min(285, Math.max(1, o.lv) + 1 + ri(80)));
+    if (k === 1) t.lv = String(Math.min(MAX_LV, Math.max(1, o.lv) + 1 + ri(80)));
     else if (k === 2) t.lv = '1';
-    else if (k === 3) t.lv = String(pick([280, 284, 285, 1 + ri(285)]));
-    else if (k === 4) t.lv = odd();
-    if (chance(0.7)) for (let i = 0; i < 7; i++) if (chance(0.4)) t[`s${i}`] = chance(0.8) ? String(pick([1 + ri(200), 280, 284, 285])) : odd();
+    else if (k === 3) t.lv = String(pick([MAX_LV - 5, MAX_LV - 1, MAX_LV, 1 + ri(MAX_LV)]));
+    else if (k === 4) t.lv = odd(MAX_LV);
+    if (chance(0.7)) for (let i = 0; i < 7; i++) if (chance(0.4)) t[`s${i}`] = chance(0.8) ? String(pick([1 + ri(200), STAT_CAP[i] - 5, STAT_CAP[i] - 1, STAT_CAP[i]])) : odd(STAT_CAP[i]);
     if (chance(0.3)) t.hp = String(chance(0.8) ? 1 + ri(22000) : pick([0, 22001, 50000]));
     if (chance(0.2)) t.mp = String(chance(0.8) ? 1 + ri(7000) : pick([0, 7001]));
     if (chance(0.2)) t.sp = String(chance(0.8) ? 1 + ri(12000) : pick([0, 12001]));
@@ -1135,13 +1149,14 @@ const SCRIPT_LIST = [
     r.step++; await r.typeChange(0, 'side', 'go'); await r.check({ probe: true, both: true });
     r.step++; await r.importLog('own', r.O.A.exportLog().split('\r').join('\r\n'), 'type', 'click', 'go'); await r.check({ probe: true, both: true });
   }],
-  ['LV 285 까지: 최고 레벨의 단추와 대시', async (r) => {
-    for (let k = 0; k < 15; k++) { r.step++; await r.runKeys('KeyL', 20, 'levelUp'); await r.check({ probe: k % 3 === 2 }); }
+  [`LV ${MAX_LV} 까지: 최고 레벨의 단추와 대시`, async (r) => {
+    // L 20번씩 묶어 최고 레벨까지(마지막 묶음은 최고 레벨을 넘겨 누른다)
+    for (let k = 0; k < Math.ceil((MAX_LV - 1) / 20); k++) { r.step++; await r.runKeys('KeyL', 20, 'levelUp'); await r.check({ probe: k % 3 === 2 }); }
     r.step++; await r.runKeys('KeyL', 3, 'levelUp'); await r.check({ probe: true, both: true });
     for (const a of [() => r.keyLevelUp(), () => r.clickLevelUp(), () => r.keyDash(0), () => r.clickDash(3), () => r.runKeys('KeyS', 30, 'statUp', 0), () => r.keyDash(6), () => r.keyHistory(false, true), () => r.keyHistory(true, true)]) { r.step++; await a(); await r.check({ probe: true, both: true }); }
   }],
-  ['스탯 상한 285: +1·대시가 꺼지고 상한 표시', async (r) => {
-    r.step++; await r.statEdit('T', { lv: '200', s0: '280', s1: '285', s5: '284', point: '9999' }, 'apply'); await r.check({ probe: true, both: true });
+  [`스탯 상한 ${STAT_CAP[0]}: +1·대시가 꺼지고 상한 표시`, async (r) => {
+    r.step++; await r.statEdit('T', { lv: '200', s0: String(STAT_CAP[0] - 5), s1: String(STAT_CAP[1]), s5: String(STAT_CAP[5] - 1), point: '9999' }, 'apply'); await r.check({ probe: true, both: true });
     for (const a of [() => r.runKeys('KeyS', 4, 'statUp', 0), () => r.keyStat(0), () => r.keyStat(0), () => r.clickUp(0), () => r.keyDash(0), () => r.clickDash(1), () => r.keyDash(5), () => r.keyDash(5), () => r.keyLevelUp(), () => r.keyHistory(false, true), () => r.keyHistory(true, true)]) { r.step++; await a(); await r.check({ probe: true, both: true }); }
   }],
   ['스탯 편집 LV 1: 편집 뒤 투자, 되돌리기, 가이드', async (r) => {
@@ -1184,7 +1199,7 @@ const SCRIPT_LIST = [
     r.step++; await r.charChange(4, 'side', 'cancel'); await r.check({});
     r.step++; await r.typeChange(2, 'side', 'esc'); await r.check({});
     r.step++; await r.resetPlan('side', 'cancel'); await r.check({});
-    r.step++; await r.importLog('otherChar', own.replace(/^[^ /\r\n]+\/[^ \r\n]+ Bonus:/m, '보리스/베기 Bonus:'), 'type', 'click', 'cancel'); await r.check({});
+    r.step++; await r.importLog('otherChar', own.replace(/^[^ /\r\n]+\/[^ \r\n]+ Bonus:/m, '보리스/베기형 Bonus:'), 'type', 'click', 'cancel'); await r.check({});
     r.step++; await r.charChange(4, 'sheet', 'go'); await r.check({ probe: true });
     r.step++; await r.statEdit('button', { lv: '1', point: '3' }, 'apply'); await r.check({});
     r.step++; await r.resetPlan('sheet', 'go'); await r.check({ probe: true, both: true });
@@ -1217,7 +1232,7 @@ const SCRIPT_LIST = [
     r.step++; await r.charChange(4, 'side', 'cancel'); await r.check({});
     r.step++; await r.typeChange(2, 'side', 'esc'); await r.check({});
     r.step++; await r.resetPlan('side', 'cancel'); await r.check({});
-    r.step++; await r.importLog('otherChar', own.replace(/^[^ /\r\n]+\/[^ \r\n]+ Bonus:/m, '보리스/베기 Bonus:'), 'type', 'click', 'cancel'); await r.check({});
+    r.step++; await r.importLog('otherChar', own.replace(/^[^ /\r\n]+\/[^ \r\n]+ Bonus:/m, '보리스/베기형 Bonus:'), 'type', 'click', 'cancel'); await r.check({});
     r.step++; await r.keyHistory(true, true); await r.check({ probe: true });
     r.step++; await r.keyHistory(false, true); await r.check({});
     r.step++; await r.charChange(4, 'side', 'go'); await r.check({ probe: true, both: true });
@@ -1248,6 +1263,24 @@ const SCRIPT_LIST = [
       r.step++; await r.runKeys('KeyL', 3, 'levelUp'); await r.check({ probe: true });
     }
     for (let k = 0; k < 22; k++) { r.step++; await r.bonusStep(k < 11); await r.check({}); }
+  }],
+  // 이 순서는 끝에 둔다(PHONE_TOO 의 번호와 앞 순서들의 seed 가 그대로이게)
+  [`상한에서 시작하는 비용 단계(LV ${CAP_STEP ? CAP_STEP.lv : '-'}): '상한 ${STAT_CAP[0]}', 레벨업하면 다시 'N부터 M'`, async (r) => {
+    if (!CAP_STEP) return;
+    const { lv, v } = CAP_STEP;
+    r.step++; await r.statEdit('T', { lv: String(lv), s0: String(v + 10), s1: String(v), s5: String(STAT_CAP[5] - 1), s6: String(v - 1), point: '9999' }, 'apply'); await r.check({ probe: true, both: true });
+    for (const a of [() => r.keyStat(0), () => r.keyStat(5), () => r.keyStat(6), () => r.keyDash(1), () => r.keyLevelUp(), () => r.keyStat(2), () => r.keyHistory(false, false), () => r.keyHistory(true, false)]) { r.step++; await a(); await r.check({ probe: true, both: true }); }
+  }],
+  // 2026-11 전의 판에서 만든 로그(타입 이름이 '베기'): 캐릭터는 알아보고 타입은 첫 타입으로 읽으며 그렇다고 알린다. 그 줄을 지금 이름으로
+  // 고친 로그는 그 타입으로 읽는다
+  ['옛 판의 타입 이름(루시안/베기): 첫 타입으로 읽는다, 지금 이름으로 고친 로그 불러오기', async (r) => {
+    r.step++; await r.typeChange(1, 'side', 'go'); await r.check({});
+    r.step++; await r.runKeys('KeyL', 8, 'levelUp'); await r.check({});
+    r.step++; await r.runKeys('KeyS', 3, 'statUp', 0); await r.check({});
+    const own = r.O.A.exportLog().split('\r').join('\r\n');
+    const old = own.replace(/^([^ /\r\n]+)\/[^ \r\n]+ Bonus:/m, '$1/베기 Bonus:');
+    r.step++; await r.importLog('unknownType', old, 'type', 'click', 'go'); await r.check({ probe: true, both: true });
+    r.step++; await r.importLog('own', own, 'type', 'ctrlEnter', 'go'); await r.check({ probe: true, both: true });
   }],
 ];
 

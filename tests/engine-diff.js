@@ -38,6 +38,10 @@ function loadOresim() {
   return ctx.Oresim;
 }
 const Oresim = loadOresim();
+// 최고 레벨과 일곱 스탯의 상한은 표에서 읽는다. 상한 둘레의 값(바로 아래, 그 값, 바로 위)도 이것으로 만든다
+const MAX_LV = Oresim.CONST.MAX_LEVEL;
+const STAT_CAP = Oresim.CONST.MAX_STATUS.slice(0, 7);
+const CAP_EDGE = [...new Set([MAX_LV, ...STAT_CAP])].flatMap((m) => [m - 1, m, m + 1]);
 
 // 특수 문자는 코드로 만든다(저장소에 전각·일본어 문자를 두지 않는다)
 const ch = (...codes) => String.fromCharCode(...codes);
@@ -185,15 +189,15 @@ const hit = (k) => { cov[k] = (cov[k] || 0) + 1; };
 function makeLogTools(R) {
   const { ri, pick, chance } = R;
   const C = Oresim.CONST;
-  const bigNum = () => pick([0, 1, 2, 3, 5, 10, 15, 30, 60, 100, 150, 200, 250, 284, 285, 286, 300, 400, -1, -3, 999, 1500]);
+  const bigNum = () => pick([0, 1, 2, 3, 5, 10, 15, 30, 60, 100, 150, 200, 250, ...CAP_EDGE, 300, 400, -1, -3, 999, 1500]);
   const anyXienName = () => pick(C.XIEN_NAME);
   const statusValues = (n) => Array.from({ length: n }, (_, k) => {
     if (chance(0.03)) return pick(['abc', '', 'NaN', '-5', ' 7 ', '1e3', '0x1A', '12.7']);
-    if (k === 0) return 1 + ri(285);
+    if (k === 0) return 1 + ri(MAX_LV);
     if (k === 1) return pick([0, 9, 10, 12, 13, 26, 30, 35, 36, 49, 60]);
     if (k === 2) return pick([0, 25, 50, 75, 100, 7, 33]);
     if (k < 6) return ri(150);
-    if (k < 13) return 1 + ri(285);
+    if (k < 13) return 1 + ri(STAT_CAP[k - 6]);
     if (k < 26) return ri(12000);
     if (k < 76) return chance(0.8) ? 0 : ri(60);
     return ri(100);
@@ -213,7 +217,7 @@ function makeLogTools(R) {
     () => 'Xien :' + anyXienName(),
     () => 'Xien         :' + pick(WS_ODD) + anyXienName() + pick(['', pick(WS_ODD)]),
     () => `LV ${pick(WS_ODD)}${bigNum()} - ${pick(['', pick(WS_ODD)])}${bigNum()} : ${pick(STATS)}`,
-    () => `LV ${ri(285) + 1}       : ${pick(STATS)} * ${pick(WS_ODD)}${pick([2, 3, 9])}`,
+    () => `LV ${ri(MAX_LV) + 1}       : ${pick(STATS)} * ${pick(WS_ODD)}${pick([2, 3, 9])}`,
     () => 'Bonus        : ' + pick(WS_ODD) + pick([0, 25, 75, 100]) + '%',
     () => 'Status       : ' + statusValues(78).split(', ').map((v, k) => (k < 18 && chance(0.2) ? pick(WS_ODD) + v : v)).join(', '),
     () => 'Status       : 1, 2, 3',
@@ -224,7 +228,7 @@ function makeLogTools(R) {
     () => `LV ${bigNum()} - ${bigNum()} : ${pick(STATS)} 몰빵 ${ri(30)}회`,
     () => `LV ${bigNum()} : FOO, ${pick(STATS)}`,
     () => `${pick(STATS)} 몰빵 5회`,
-    () => `LV ${ri(285) + 1} : ${pick(STATS)}, ${pick(STATS)} * 2, ${pick(STATS)}`,
+    () => `LV ${ri(MAX_LV) + 1} : ${pick(STATS)}, ${pick(STATS)} * 2, ${pick(STATS)}`,
     () => { const c = ri(C.CHAR_NAME.length); return `${C.CHAR_NAME[c]}/${pick(C.STYLE_NAME[c])} Bonus: 1 / 2 Point: 3`; },
     () => { const c = ri(C.CHAR_NAME.length); return `${C.CHAR_NAME[c]} / ${pick(C.STYLE_NAME[c])}`; },
     () => pick(C.CHAR_NAME),
@@ -251,11 +255,11 @@ function makeLogTools(R) {
   // 사람이 고친 듯한 변경
   const HAND = [
     (L) => { const i = L.findIndex((s) => / \* \d+/.test(s)); if (i >= 0) L[i] = L[i].replace(/ \* (\d+)/, (m, d) => ` * ${+d + 1}`); },
-    (L) => { const i = L.findIndex((s) => /^LV +\d+ -/.test(s)); if (i >= 0) L[i] = L[i].replace(/- +(\d+) :/, (m, d) => `- ${Math.min(+d + 1 + ri(5), 285)} :`); },
+    (L) => { const i = L.findIndex((s) => /^LV +\d+ -/.test(s)); if (i >= 0) L[i] = L[i].replace(/- +(\d+) :/, (m, d) => `- ${Math.min(+d + 1 + ri(5), MAX_LV)} :`); },
     (L) => { L.splice(1 + ri(Math.max(1, L.length - 2)), 0, 'Bonus        : ' + pick([0, 25, 75, 100]) + '%'); },
     (L) => { L.splice(1 + ri(Math.max(1, L.length - 2)), 0, 'Xien         : ' + anyXienName()); },
     (L) => { const i = L.findIndex((s) => /^LV.*: [A-Z]/.test(s)); if (i >= 0) L[i] = L[i].replace(/: ([A-Z]+)/, () => `: ${pick(STATS)}`); },
-    (L) => { const f = L.findIndex((s) => / Bonus: /.test(s)); const lvs = L.map((s) => /^LV +(\d+)(?: - +(\d+))? :/.exec(s)).filter(Boolean); const last = lvs.length ? +(lvs[lvs.length - 1][2] || lvs[lvs.length - 1][1]) : 1; if (f >= 0) L.splice(f, 0, `LV ${Math.min(last + 1, 285)}       : ${pick(STATS)} * 2, ${pick(STATS)}`); },
+    (L) => { const f = L.findIndex((s) => / Bonus: /.test(s)); const lvs = L.map((s) => /^LV +(\d+)(?: - +(\d+))? :/.exec(s)).filter(Boolean); const last = lvs.length ? +(lvs[lvs.length - 1][2] || lvs[lvs.length - 1][1]) : 1; if (f >= 0) L.splice(f, 0, `LV ${Math.min(last + 1, MAX_LV)}       : ${pick(STATS)} * 2, ${pick(STATS)}`); },
   ];
   const garble = (text, n) => { const L = text.split('\r'); for (let k = 0; k < n; k++) pick(OPS)(L); return L.join(pick(['\r', '\r', '\r', '\n', '\r\n'])); };
   const hand = (text) => { const L = text.split('\r'); const k = 1 + ri(3); for (let j = 0; j < k; j++) pick(HAND)(L); return L.join('\r'); };
@@ -275,7 +279,7 @@ function makeLogTools(R) {
   const statusLv = (S) => {
     const n = pick([78, 78, 46]);
     const vals = statusValues(n).split(', ');
-    const lv0 = pick([1, 2, 10, 50, 120, 199, 200, 250, 284, 285]);
+    const lv0 = pick([1, 2, 10, 50, 120, 199, 200, 250, MAX_LV - 1, MAX_LV]);
     vals[0] = String(lv0);
     vals[2] = String(pick([0, 5, 25, 50, 75, 100, 7, 33, 103, -5, 'abc', '', 2.5, 98]));
     if (n === 78) vals[76] = String(pick([50, 7, 33, 100, 0, 'x']));
@@ -300,23 +304,24 @@ function makeLogTools(R) {
 // ---- 무작위 스탯 편집 값 ----
 function editValues(R, ed, C, charIndex) {
   const { ri, pick, chance } = R;
-  const odd = () => pick([0, -5, 286, 300, 99999, 7.6, 2.5, '12', ' 40 ', 'abc', '', 'NaN', '1e2', null, -0.4, 285.5]);
+  // 그 칸의 상한(cap) 바로 위·반올림하면 넘는 값, 범위 밖, 소수, 글자
+  const odd = (cap) => pick([0, -5, cap + 1, 300, 99999, 7.6, 2.5, '12', ' 40 ', 'abc', '', 'NaN', '1e2', null, -0.4, cap + 0.5]);
   const v = {};
   const k = ri(5);
   let lv = ed.lv;
   if (k === 0) { v.lv = ed.lv; hit('edit.inPlace'); }
-  else if (k === 1) { v.lv = lv = Math.min(285, ed.lv + 1 + ri(80)); hit('edit.higherLv'); }
+  else if (k === 1) { v.lv = lv = Math.min(MAX_LV, ed.lv + 1 + ri(80)); hit('edit.higherLv'); }
   else if (k === 2) { v.lv = lv = 1; hit('edit.lv1'); }
-  else if (k === 3) { v.lv = lv = pick([280, 283, 284, 285, 1 + ri(285)]); hit('edit.anyLv'); }
-  else { v.lv = odd(); hit('edit.oddLv'); }
+  else if (k === 3) { v.lv = lv = pick([MAX_LV - 5, MAX_LV - 2, MAX_LV - 1, MAX_LV, 1 + ri(MAX_LV)]); hit('edit.anyLv'); }
+  else { v.lv = odd(MAX_LV); hit('edit.oddLv'); }
   if (chance(0.85)) {
-    v.stats = ed.stats.map((s) => {
+    v.stats = ed.stats.map((s, i) => {
       const r = R.rnd();
       if (r < 0.35) return s;
       if (r < 0.6) return 1 + ri(200);
-      if (r < 0.75) return pick([280, 283, 284, 285]);
+      if (r < 0.75) return pick([STAT_CAP[i] - 5, STAT_CAP[i] - 2, STAT_CAP[i] - 1, STAT_CAP[i]]);
       if (r < 0.8) return undefined;
-      return odd();
+      return odd(STAT_CAP[i]);
     });
   }
   if (chance(0.4)) v.hp = chance(0.7) ? 1 + ri(22000) : pick([0, 22001, 50000, 'x', 3.5]);
@@ -324,7 +329,7 @@ function editValues(R, ed, C, charIndex) {
   if (chance(0.3)) v.sp = chance(0.7) ? 1 + ri(12000) : pick([0, 12001, '']);
   if (chance(0.7)) v.point = chance(0.6) ? ri(80) : pick([0, 500, 5000, 9999, 10000, 123456, -3, 'abc', '', 12.5]);
   if (chance(0.6)) {
-    const L = typeof lv === 'number' && lv >= 1 ? Math.min(Math.round(lv), 285) : 1;
+    const L = typeof lv === 'number' && lv >= 1 ? Math.min(Math.round(lv), MAX_LV) : 1;
     v.lines = ed.lines.map((ln) => {
       if (chance(0.5)) return { x: ln.x };
       const row = C.MAX_XIEN[charIndex][ln.x];
@@ -360,7 +365,7 @@ function edgeCorpus() {
     ['전각 쉼표·콜론·하이픈', ['LV   1       ' + FW[':'], 'LV   2 ' + FW['-'] + '  5 ' + FW[':'] + ' STAB' + FW[','] + ' DEX * 2', foot(6, 2)].join('\r')],
     ['Xien 뒤 전각 공백', ['LV   1       :', 'Xien         : ' + x(9) + IDEO_SPACE, 'LV   2 -   5 : STAB', foot(0, 0)].join('\r')],
     ['Xien 뒤 NBSP·탭', ['LV   1       :', 'Xien         : ' + x(8) + NBSP, 'LV   2       : DEX', 'Xien         : ' + x(9) + '\t', 'LV   3       : STAB', foot(0, 2)].join('\r')],
-    ['Xien 메모', ['LV   1       :', 'Xien         : ' + x(9) + ' 메모입니다', 'LV   2 -   9 : HACK 몰빵 9회', foot(0, 1)].join('\r')],   // 검계: 루시안/베기의 기본 계열이 아니고 LV1 에서 고를 수 있다
+    ['Xien 메모', ['LV   1       :', 'Xien         : ' + x(9) + ' 메모입니다', 'LV   2 -   9 : HACK 몰빵 9회', foot(0, 1)].join('\r')],   // 검계: 루시안/베기형의 기본 계열이 아니고 LV1 에서 고를 수 있다
     ['Xien 고를 수 없는 계열', ['LV   1       :', 'Xien         : ' + x(1), 'LV   2 -   3 : INT', foot(0, 0)].join('\r')],
     ['Status 78칸 + 같은 레벨 투자', [status(120, 50), 'LV 120       : STAB * 3', 'Bonus        : 75%', 'LV 121       : STAB', foot(0, 0)].join('\r')],
     ['Status 보너스 37 뒤 레벨업', [status(30, 37), 'LV  31 -  40 : DEX', foot(0, 0)].join('\r')],
@@ -440,9 +445,9 @@ function heavyCases() {
   const status = (lv, point) => 'Status       : ' + [lv, 10, 50, 0, 0, 0, 40, 30, 10, 20, 10, 20, 20, 2200, 500, 1000, 0, point, 2200, 500, 1000, 0, 2200, 500, 1000, 0].concat(z50, [50, 1]).join(', ');
   const after = [['levelUp'], ['statUp', 0], ['dash', 5], ['undo', true], ['undo'], ['redo', true], ['statUp', 3]];
   return [
-    ['LV 2 - 285 : STAB * 2000', ['LV   1       :', 'LV   2 - 285 : STAB * 2000', foot].join('\r'), after],
+    [`LV 2 - ${MAX_LV} : STAB * 2000`, ['LV   1       :', `LV   2 - ${MAX_LV} : STAB * 2000`, foot].join('\r'), after],
     ['LV 2 - 160000 : STAB', ['LV   1       :', 'LV   2 - 160000 : STAB', foot].join('\r'), after],
-    ['284줄 STAB * 600, DEX * 600', ['LV   1       :'].concat(Array.from({ length: 284 }, (_, k) => `LV ${k + 2}       : STAB * 600, DEX * 600`), [foot]).join('\r'), after],
+    [`${MAX_LV - 1}줄 STAB * 600, DEX * 600`, ['LV   1       :'].concat(Array.from({ length: MAX_LV - 1 }, (_, k) => `LV ${k + 2}       : STAB * 600, DEX * 600`), [foot]).join('\r'), after],
     ['LV 2 : STAB * 300001', ['LV   1       :', 'LV   2       : STAB * 300001', foot].join('\r'), after],
     ['몰빵 LV 2 - 300002 뒤 AGI 줄', ['LV   1       :', 'LV   2 - 300002 : STAB 몰빵 1회', 'LV 300003       : AGI', foot].join('\r'), after],
     ['STAB, HACK LV 2 - 160001 뒤 Bonus·AGI 줄', ['LV   1       :', 'LV   2 - 160001 : STAB, HACK', 'Bonus        : 100%', 'LV 160002       : AGI', foot].join('\r'), after],
@@ -458,7 +463,7 @@ function scripts() {
   const xs = (c) => { const out = []; C.MAX_XIEN[c].forEach((row, x) => { if (row[row.length - 1] > 0) out.push(x); }); return out; };
   return [
     // 드롭다운을 연 뒤(tmpx = 큰 번호) 계열이 적은 캐릭터로 바꾸고, 고를 수 없는 Xien 줄을 읽는다 → tmpx 를 마지막 항목으로 줄인다
-    // (티치엘/전투는 처음 계열이 7개 중 마지막. 같은 계열을 다시 고르면 드롭다운만 열린다 → tmpx = 6)
+    // (티치엘/전투형은 처음 계열이 7개 중 마지막. 같은 계열을 다시 고르면 드롭다운만 열린다 → tmpx = 6)
     ['tmpx 줄이기(로아미니)', [['setChar', 5], ['setType', 2], ['setXien', xs(5)[6]], ['setChar', 15], ['importLog', allXien], ['levelUp'], ['statUp', 2]]],
     ['tmpx 줄이기(벤야)', [['setChar', 5], ['setType', 2], ['setXien', xs(5)[6]], ['setChar', 14], ['importLog', 'LV   1       :\rXien         : ' + C.XIEN_NAME[0] + '\rLV   2       : STAB'], ['levelUp'], ['dash', 0]]],
     // 같은 캐릭터·타입을 다시 고르면 아무 일도 없다
@@ -469,9 +474,9 @@ function scripts() {
     ['편집 지점으로 되돌리기', [['levelUp'], ['levelUp'], ['editCommit', { lv: 40, stats: [30, 20, 10, 10, 10, 10, 10], point: 30 }], ['statUp', 0], ['statUp', 0], ['undo'], ['undo'], ['undo'], ['undo', true], ['redo', true], ['levelUp'], ['guide']]],
     ['LV1 편집 뒤 투자', [['editCommit', { lv: 1, point: 20 }], ['statUp', 1], ['statUp', 1], ['levelUp'], ['statUp', 6], ['undo', true], ['guide']]],
     // 최고 레벨: 대시가 포인트 없이는 아무것도 못 한다(소리는 난다)
-    ['최고 레벨 대시', [['editCommit', { lv: 285, point: 0 }], ['dash', 0], ['statUp', 0], ['levelUp'], ['editCommit', { lv: 284, point: 9999 }], ['dash', 3], ['levelUp'], ['dash', 3]]],
+    ['최고 레벨 대시', [['editCommit', { lv: MAX_LV, point: 0 }], ['dash', 0], ['statUp', 0], ['levelUp'], ['editCommit', { lv: MAX_LV - 1, point: 9999 }], ['dash', 3], ['levelUp'], ['dash', 3]]],
     // 스탯 상한
-    ['스탯 상한', [['editCommit', { lv: 200, stats: [284, 285, 283, 1, 1, 1, 1], point: 9999 }], ['statUp', 0], ['statUp', 0], ['statUp', 1], ['dash', 2], ['dash', 2], ['levelUp'], ['guide']]],
+    ['스탯 상한', [['editCommit', { lv: 200, stats: [STAT_CAP[0] - 1, STAT_CAP[1], STAT_CAP[2] - 2, 1, 1, 1, 1], point: 9999 }], ['statUp', 0], ['statUp', 0], ['statUp', 1], ['dash', 2], ['dash', 2], ['levelUp'], ['guide']]],
     // POINT 9999 넘김 → 편집 창을 그대로 적용하면 9999 로 줄어든다(원본 그대로)
     ['POINT 9999 넘김', [['editCommit', { lv: 100, point: 9999 }], ['levelUp'], ['levelUp'], ['editOpen'], ['editCommit', {}], ['guide']]],
     // 로아미니 처음 대시
@@ -547,18 +552,18 @@ function runSeed(seed, steps) {
       const pd = diff(realPreview(v0, oracleView(A.S), res), pv, 'preview() / 원본의 실제 레벨업', []);
       if (pd.length) fail(step, pd);
       hit(res.ok ? 'levelUp.ok' : 'levelUp.refused');
-      if (lv >= 285 || parseInt(S.lv.text) >= 285) hit('reached.maxLevel');
+      if (lv >= MAX_LV || parseInt(S.lv.text) >= MAX_LV) hit('reached.maxLevel');
     } else if (r < 50) {
       const i = chance(0.4) ? focus : ri(7);
       const res = both(step, `S${i}`, (X) => X.statUp(i));
-      hit(res.ok ? 'statUp.ok' : (parseInt(S[`s${i}`].text) >= 285 ? 'statUp.refused.cap' : 'statUp.refused.point'));
+      hit(res.ok ? 'statUp.ok' : (parseInt(S[`s${i}`].text) >= STAT_CAP[i] ? 'statUp.refused.cap' : 'statUp.refused.point'));
     } else if (r < 56) {
       const i = chance(0.4) ? focus : ri(7);
       const v0 = oracleView(A.S), pd0 = E.previewDash(i);
       const res = both(step, `D${i}`, (X) => X.dash(i));
       const pd = diff(realDash(v0, oracleView(A.S), res, i), pd0, `previewDash(${i}) / 원본의 실제 대시`, []);
       if (pd.length) fail(step, pd);
-      hit(res.ok ? 'dash.ok' : (parseInt(A.S[`s${i}`].text) >= 285 ? 'dash.refused.cap' : 'dash.refused.noop'));
+      hit(res.ok ? 'dash.ok' : (parseInt(A.S[`s${i}`].text) >= STAT_CAP[i] ? 'dash.refused.cap' : 'dash.refused.noop'));
       if (pd0) hit(pd0.levelUps > 0 ? 'previewDash.levelUps' : 'previewDash.noLevelUp');
     } else if (r < 60) {
       const by = chance(0.3);
@@ -650,16 +655,16 @@ function runSeed(seed, steps) {
         const res = both(step, 'L', (X) => X.levelUp());
         hit(res.ok ? 'levelUp.ok' : 'levelUp.refused');
       }
-      if (parseInt(A.S.lv.text) >= 285) hit('reached.maxLevel');
+      if (parseInt(A.S.lv.text) >= MAX_LV) hit('reached.maxLevel');
     } else {
       const i = ri(7);
       const k = 2 + ri(12);
       for (let j = 0; j < k; j++) {
         const res = both(step, `S${i}`, (X) => X.statUp(i));
-        hit(res.ok ? 'statUp.ok' : (parseInt(A.S[`s${i}`].text) >= 285 ? 'statUp.refused.cap' : 'statUp.refused.point'));
+        hit(res.ok ? 'statUp.ok' : (parseInt(A.S[`s${i}`].text) >= STAT_CAP[i] ? 'statUp.refused.cap' : 'statUp.refused.point'));
       }
     }
-    for (let i = 0; i < 7; i++) if (parseInt(A.S[`s${i}`].text) >= 285) { hit('reached.statCap'); break; }
+    for (let i = 0; i < 7; i++) if (parseInt(A.S[`s${i}`].text) >= STAT_CAP[i]) { hit('reached.statCap'); break; }
     if (A.lastError && !cov.__seenErr) cov.__seenErr = 1;
   }
   return compared;

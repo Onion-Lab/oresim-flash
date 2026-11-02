@@ -90,7 +90,7 @@
   const SHORTCUT = ['S', 'H', 'I', 'F', 'M', 'X', 'A'];
   const STAT_KEYS = ['STAB', 'HACK', 'INT', 'DEF', 'MR', 'DEX', 'AGI'];
   const STEP = 25;                                          // 비용 한 단계는 스탯 값 25칸(원본: floor((LV + 5×값) / 125)). 계단 그림에만 쓴다
-  const statCap = (i) => CONST.MAX_STATUS[i];               // 스탯 상한: MAX_STATUS[0..6](285)
+  const statCap = (i) => CONST.MAX_STATUS[i];               // 스탯 상한: MAX_STATUS[0..6](255)
   const statRe = new RegExp(`\\b(${STAT_KEYS.join('|')})\\b`, 'g');
 
   // ---------- 로그와 가이드를 제 글자에서 읽는다 ----------
@@ -163,7 +163,9 @@
     // 비용 계단: 지금 비용이 시작된 값(nextStepAt − 25, 1 이상), 비용이 오르는 값, 그 사이에서 값의 자리
     const stats = v.stats.map((st, i) => {
       const cap = statCap(i);
-      const lastStep = st.nextStepAt > cap;                      // 상한까지 비용이 더 오르지 않는다
+      // 상한까지 비용이 더 오르지 않는다. 상한에서 시작하는 단계(nextStepAt = 상한, 예: LV 225~229 의 230~254)는 그 값에서
+      // 더 찍을 수 없으니 없는 단계다(받은 시트의 '필포' 표도 그 칸을 비운다. CLAUDE.md '데이터 교체')
+      const lastStep = st.nextStepAt >= cap;
       const start = Math.max(1, st.nextStepAt - STEP);
       const top = lastStep ? cap : st.nextStepAt;
       const len = Math.max(1, top - start);
@@ -1420,13 +1422,13 @@
     }
     return `#t=${toB64url(bytes)}`;
   }
-  // 링크로 받는 계획의 크기 한도. 진짜 계획은 로그가 길어야 900줄 남짓(LV 285 까지 레벨마다 보너스와 주력 계열을 바꿔도, 약 20KB)
+  // 링크로 받는 계획의 크기 한도. 진짜 계획은 로그가 길어야 760줄 남짓(LV 255 까지 레벨마다 보너스와 주력 계열을 바꿔도, 약 20KB)
   // 이고 링크도 그 안이다. 일부러 만든 거대한 링크는 풀고 읽는 데만 탭을 붙잡으므로 넘으면 읽지 않는다
   const LINK_MAX = { payload: 400000, bytes: 262144, lines: 2000 };
   // 링크를 읽지 못한 까닭: 'nodeflate' 압축을 풀 수 없는 브라우저, 'big' 너무 큼, 그 밖(잘림, 손상, 다른 형식)
   class LinkError extends Error { constructor(kind) { super(kind); this.kind = kind; } }
   // 링크의 로그가 이 시뮬레이터가 쓴 모양인가: 엔진이 읽는 Status 줄(스탯 편집으로 시작한 계획)은 하나뿐이고, 그 LV 와 일곱 스탯이
-  // 스탯 편집 창의 범위(1~285) 안이다. 링크는 언제나 이 시뮬레이터의 재분배 로그(exportLog)를 담으므로 그렇다. 손으로 만든 글은
+  // 스탯 편집 창의 범위(1~255) 안이다. 링크는 언제나 이 시뮬레이터의 재분배 로그(exportLog)를 담으므로 그렇다. 손으로 만든 글은
   // Status 줄을 여러 번 두거나 음수 LV·스탯을 넣어 엔진이 작업 한도까지 몇 초씩 일하게 할 수 있다: 그런 링크는 읽지 않는다(붙여넣은
   // 로그는 원본처럼 그대로 읽는다). 줄을 가르는 법은 엔진의 것(맨 앞 공백, 전각 콜론·쉼표·하이픈, 값 78개 또는 46개)을 따른다
   function linkLogOk(log) {

@@ -5,7 +5,8 @@
  *     oresim-const.as 의 모든 선언은 CONST 에 있거나, 일부러 뺀 목록(Flash 그림 경로)에 있다.
  *  2. tools/gen-web-const.js 로 다시 만든 결과가 지금 web/js/const.js 와 바이트 단위로 같다(손으로 고치지 않았다).
  *  3. CONST 는 깊이 얼어 있다.
- *  4. 엔진이 쓰는 스테퍼 한계(스탯 편집 창 editOpen().limits, 보너스%)가 oresim.mxml 과 같다.
+ *  4. 엔진이 쓰는 스테퍼 한계(스탯 편집 창 editOpen().limits, 보너스%)가 oresim.mxml 과 같다. 같은 스테퍼를 따라 적어 둔
+ *     oresim_offline.mxml 의 NumericStepper 와 엔진의 STEPPER_DEFS 도 oresim.mxml 과 같다(최솟값, 최댓값, 단위, 처음 값).
  *  5. 엔진과 로그 읽기가 기대는 데이터 성질(CLAUDE.md '데이터/구조 변경 체크리스트'):
  *     타입마다 기본 계열이 하나이고 그 캐릭터 드롭다운에 있다, 드롭다운 계열에는 이름이 있다,
  *     캐릭터·타입·계열 이름 규칙(공백·'/'·':' 금지, 앞부분 겹침 금지 등), 표 크기.
@@ -101,6 +102,22 @@ for (const id of ['slv', 'ss0', 'ss1', 'ss2', 'ss3', 'ss4', 'ss5', 'ss6']) {
 }
 const [bmin, bmax, bstep] = steppers.bonusNS;
 if (E.setBonus(bmin - 10).rate !== bmin || E.setBonus(bmax + 10).rate !== bmax || E.setBonus(bstep + bstep / 2 - 0.1).rate !== bstep) bad('보너스% 스테퍼 한계·단위가 oresim.mxml 과 다르다');
+// 같은 스테퍼를 따라 적어 둔 두 곳도 oresim.mxml 과 같다: oresim_offline.mxml 의 NumericStepper 와 엔진의 STEPPER_DEFS
+// ([minimum, maximum, stepSize, 처음 value]). 엔진은 편집 창을 열 때 slv·ss0~ss9 의 maximum 을 상수로 바꾸므로, STEPPER_DEFS 의
+// 숫자가 틀려도 위의 limits 와 차등 시험에는 드러나지 않는다
+const stepperDefs = (src) => {
+  const out = {};
+  for (const tag of src.match(/<mx:NumericStepper\b[^>]*>/g) || []) {
+    const a = Object.fromEntries([...tag.matchAll(/(\w+)="([^"]*)"/g)].map((m) => [m[1], m[2]]));
+    out[a.id] = [+a.minimum, +a.maximum, +a.stepSize, +a.value];
+  }
+  return out;
+};
+const mxmlDefs = stepperDefs(mxml);
+deepEq(stepperDefs(fs.readFileSync(path.join(H.REPO, 'oresim_offline.mxml'), 'utf8')), mxmlDefs, 'oresim_offline.mxml 의 NumericStepper');
+const defsSrc = (fs.readFileSync(path.join(H.REPO, 'web/js/engine.js'), 'utf8').match(/var STEPPER_DEFS = \{([\s\S]*?)\};/) || [])[1];
+if (!defsSrc) bad('web/js/engine.js 에서 STEPPER_DEFS 를 찾지 못했다');
+else deepEq(Object.fromEntries([...defsSrc.matchAll(/(\w+): \[([^\]]*)\]/g)].map((m) => [m[1], m[2].split(',').map(Number)])), mxmlDefs, 'engine.js 의 STEPPER_DEFS');
 
 // 5. 데이터 성질
 const C = CONST;
@@ -173,5 +190,5 @@ if (problems.length) {
   for (const m of problems.slice(0, 40)) console.log('  - ' + m);
   process.exitCode = 1;
 } else {
-  console.log(`OK: CONST ${Object.keys(CONST).length}개 = oresim-const.as (뺀 것: ${[...gen.DROPPED].filter((n) => allDecl.includes(n)).length}개 그림 경로), 다시 만든 const.js 와 같음, 얼어 있음, 스테퍼 한계 = oresim.mxml, 데이터 성질 OK, 문자 코드 ${decoders.map((d) => d[0]).join('/')} 로 읽어도 같음`);
+  console.log(`OK: CONST ${Object.keys(CONST).length}개 = oresim-const.as (뺀 것: ${[...gen.DROPPED].filter((n) => allDecl.includes(n)).length}개 그림 경로), 다시 만든 const.js 와 같음, 얼어 있음, 스테퍼 한계 = oresim.mxml = oresim_offline.mxml = STEPPER_DEFS, 데이터 성질 OK, 문자 코드 ${decoders.map((d) => d[0]).join('/')} 로 읽어도 같음`);
 }
