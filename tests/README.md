@@ -16,7 +16,7 @@
 
 걸리는 시간(이 작업 환경에서 잰 값): `gen-web-const --check`·`const-check`·`as3-semantics` 각 1초 안, `engine-diff` 기본값 약 100초
 (`300 400` 약 8분, `8 1500 1001` 약 50초), `engine-invariants` 약 55초, `web-smoke` 약 25초, `web-diff` 정해 둔 순서만(`WEBDIFF_SCRIPTS=only`)
-약 2분 40초, `web-diff 2 60` 약 2분 20초(`10 120` 약 7분. 둘 다 정해 둔 순서가 20개이던 때).
+약 2분 40초, `web-diff 2 60` 약 2분 20초(정해 둔 순서가 20개이던 때), `web-diff 10 120` 약 9분(정해 둔 순서 24개, 2026-11-03).
 기계가 바쁜 정도에 따라 크게 달라진다: 2026-11-03에 다른 일 없이 차례로 돌렸을 때 `engine-diff 20 400` 약 73초, `engine-diff 4 1500 1001` 약 58초,
 `engine-invariants` 약 66초였다(2026-11-02에는 `engine-diff 8 1500 1001` 약 82초).
 

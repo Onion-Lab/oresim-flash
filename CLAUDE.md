@@ -583,15 +583,16 @@
 | `node tests/engine-diff.js [seeds=50] [조작수=400] [첫seed=1]` | 차등 퍼저: 원본(하네스)과 엔진에 같은 무작위 조작을 넣고 조작마다 결과(`importLog`의 `capped`까지), 상태 전체, `view()`, `exportLog()`, `guide()`를 비교한다. `preview()`/`previewDash()`는 원본이 실제로 한 결과와. 상한이 285이던 판의 로그(상한을 넘는 `Status` 줄, 최고 레벨을 넘는 LV 줄)도 읽힌다 | 기본 약 100초, `300 400` 약 8분, `8 1500 1001` 약 50초 |
 | `node tests/engine-invariants.js [runs=40] [seed=777]` | 불변식 퍼저: 로그 왕복, ←×k →×k 복귀, P 멱등, 편집 '적용' 무변화, `serialize()` 왕복, 미리보기 = 실제, 상한을 넘는 옛 로그(`Status` 줄, LV 줄, `LV:` 요약 줄)를 상한으로 읽고 다시 내보낸 로그는 `capped`가 아닌지(`capped.*`), 아주 큰 LV의 되돌리기(`budget.undoHugeLv`) 등 | 약 55초 |
 | `node tests/web-smoke.js` | (Playwright) `web/`을 작은 http 서버로 내보내 Chromium에서 시작, 진짜 키·클릭 뒤 화면 = `engine().view()`, 보너스 반올림, 새로 고침 뒤 되살리기(되돌리기 기록까지), 공유 링크 왕복과 묻는 동안의 주소창, 손으로 만든 링크 거절, 붙여넣은 로그 왕복, 앞 판 엔진의 자동 저장을 로그에서 다시 만들기, 이름이 바뀐 타입과 상한을 넘는 옛 계획의 자동 저장·링크와 그 알림, 1440×900에서 LV 범위 줄이 있어도 페이지 높이 900, 깨끗한 콘솔(22가지) | 약 25초 |
-| `node tests/web-diff.js [seeds=20] [steps=150] [firstSeed=1]` | (Playwright) `file://`로 연 화면을 진짜 입력으로만 움직이고 같은 입력을 원본(하네스)에도 넣어, 조작마다 화면의 글자를 원본 상태와 비교한다(세 너비, 정해 둔 순서 24개 + 무작위) | 정해 둔 순서만 약 2분 40초. `2 60` 약 2분 20초, `10 120` 약 7분(정해 둔 순서가 20개이던 때) |
+| `node tests/web-diff.js [seeds=20] [steps=150] [firstSeed=1]` | (Playwright) `file://`로 연 화면을 진짜 입력으로만 움직이고 같은 입력을 원본(하네스)에도 넣어, 조작마다 화면의 글자를 원본 상태와 비교한다(세 너비, 정해 둔 순서 24개 + 무작위) | 정해 둔 순서만 약 2분 40초. `2 60` 약 2분 20초(정해 둔 순서가 20개이던 때), `10 120` 약 9분 |
 
 - Playwright 시험 둘은 `require('playwright')`가 안 되거나 브라우저를 띄우지 못하면 그렇게 말하고 종료 코드 0으로 끝난다(저장소는 npm을 쓰지 않는다).
-- 마지막 확인(2026-11-03, 검토에서 찾은 것을 고친 지금 판: `capped`가 `LV:` 요약 줄도 본다, 안내 글의 '캐릭터/타입'을 한 덩어리로): 엔진은
-  `engine-diff 20 400`(비교한 상태 18,320개. 최고 레벨 255에 425번, 스탯 상한에 2,534번 닿음)과 `engine-diff 4 1500 1001`(13,790개. 191번, 1,741번)
-  어긋남 0이고, 상한을 넘는 글을 읽은 불러오기(`capped`가 참)를 지나갔다(`20 400`에서 무작위 38번, 경계 입력 57번). `engine-invariants` 통과
-  (`capped.summaryLine`, 되돌리기까지 가는 `budget.undoHugeLv` 포함). 화면은 `WEBDIFF_SCRIPTS=only node tests/web-diff.js`(정해 둔 순서 24개, 조작 295개)와
-  `web-diff 3 100 601`(`WEBDIFF_SCRIPTS=0`, seed 601~603, 조작 300개) 어긋남 0, `web-smoke` 22가지 모두 통과. `gen-web-const --check`·`const-check`·
-  `as3-semantics` 통과, Taste Skill lint 0 FAIL/0 WARN, inspect 0 FAIL(WARN은 tiny-text 하나, 47%). 이 고침은 AS3와 MXML을 바꾸지 않았다.
+- 마지막 확인(2026-11-03, 지금 판: 상한 255 마이그레이션과 검토에서 찾은 것을 고친 뒤. 하나씩 차례로 돌렸다): 엔진은 `engine-diff 300 400`
+  (비교한 상태 280,409개. 최고 레벨 255에 5,337번, 스탯 상한에 40,713번 닿음. 상한을 넘는 글을 읽은 불러오기(`capped`가 참)가 무작위 371번,
+  경계 입력 63번이었고, 내보낸 로그를 다시 읽은 3,384번은 모두 `capped`가 아님)과 `engine-diff 8 1500 1001`(27,839개. 458번, 3,780번) 어긋남 0,
+  `engine-invariants` 통과(`capped.*`, 요약 줄이 마지막 줄이 아닌 글, 되돌리기까지 가는 `budget.undoHugeLv` 포함). 화면은 `web-diff 10 120`
+  (정해 둔 순서 24개와 seed 1~10, 조작 1,495개. 상한을 넘는 옛 로그 불러오기 포함) 어긋남 0, `web-smoke` 22가지 모두 통과.
+  `gen-web-const --check`·`const-check`·`as3-semantics` 통과, Taste Skill lint 0 FAIL/0 WARN, inspect 0 FAIL(WARN은 tiny-text 하나, 47%).
+  두 MXML은 mxmlc 4.16.1(위 '빌드'의 옵션)로 오류 0건, 경고 87건(99030f6과 같은 경고).
 - 그 전 확인(2026-11-03, 상한 255 마이그레이션 판. `capped`가 요약 줄을 보기 전): 엔진은 `engine-diff 20 400`(비교한 상태 18,302개)과 `engine-diff 4 1500 1001`
   (13,793개. 최고 레벨 255에 199번, 스탯 상한에 1,736번 닿음) 어긋남 0이고, 상한을 넘는 글을 읽은 불러오기(`capped`가 참)를 지나갔다
   (`20 400`에서 무작위 34번, 경계 입력 42번). `engine-invariants` 통과(새 `capped.*` 경우 포함). 화면은 `WEBDIFF_SCRIPTS=only node tests/web-diff.js`
