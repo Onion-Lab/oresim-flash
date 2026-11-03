@@ -392,6 +392,49 @@ function normalizePaste(text) {
   return s.split('\r\n').join('\r').split('\n').join('\r');
 }
 
+// importLog 의 capped(원본에 없는 계약 값): 로그 상자의 글(logarea.text)에 지금 상한을 넘는 값이 있는가.
+// 엔진 코드를 쓰지 않고 원본 logLoad 의 글 다루기를 따로 옮겨 정한다(엔진과 같은지는 engine-diff 가 importLog 결과로 본다).
+//  1. 전각 쉼표·콜론·하이픈(U+FF0C/FF1A/FF0D)을 반각으로 바꾼 뒤, 원본처럼 \r 로 줄을 나누며 \r 바로 뒤의 공백을 떼고 이어진 공백을 하나로 줄인다
+//  2. 줄 머리(첫 ':' 앞)를 공백으로 나눈 첫 낱말이 "LV" 이면: 둘째(시작 레벨)나 넷째(끝 레벨) 낱말의 AS3 parseInt 가 MAX_LEVEL 보다 크다
+//  3. 첫 낱말이 "Status" 이고 ':' 뒤(공백을 모두 지운 것)를 ',' 로 나눈 칸이 78개나 46개이면: 0번 칸(LV)이 MAX_LEVEL 보다,
+//     또는 6~12번 칸(일곱 스탯)이 MAX_STATUS 보다 크다
+//  4. 줄 머리가 "LV" 하나이고(원본 logOut 이 끝에 쓰는 요약 줄 "LV:170 STAB 285 HACK 4 …") ':' 뒤를 공백으로 나눈 낱말의 1·3·…·13번 칸이
+//     SUMMARY_NAMES 이면: 0번 칸(LV)이 MAX_LEVEL 보다, 또는 이름 바로 뒤 칸(스탯)이 MAX_STATUS 보다 크다. 원본은 이 줄을 읽지 않지만,
+//     상한이 285이던 판에서 LV 256 전에 스탯이 255를 넘은 계획(몰빵 등)은 이 줄에만 상한을 넘는 값이 남는다
+// 글만 보므로 원본의 읽기가 중간에 예외로 멈춰도 같은 값이다.
+const SUMMARY_NAMES = ['STAB', 'HACK', 'INT', 'DEF', 'MR', 'DEX', 'AGI'];   // 원본 logOut 이 요약 줄에 글자 그대로 쓰는 이름(그 순서)
+function overCapText(paneText, maxLevel, maxStatus) {
+  const src = String(paneText).split('\uFF0C').join(',').split('\uFF1A').join(':').split('\uFF0D').join('-');
+  const lines = [''];
+  for (let i = 0; i < src.length; i++) {
+    const c = src.charAt(i);
+    if (c === '\r') {
+      lines.push('');
+      while (i + 1 < src.length && src.charAt(i + 1) === ' ') i++;
+      continue;
+    }
+    lines[lines.length - 1] += c;
+    while (i + 1 < src.length && c === ' ' && src.charAt(i + 1) === ' ') i++;
+  }
+  const over = (v, cap) => as3ParseInt(v) > cap;   // 수가 아니면(NaN) 넘지 않는다
+  return lines.some((ln) => {
+    const parts = ln.split(':');
+    const words = parts[0].split(' ');
+    if (words[0] === 'LV' && (over(words[1], maxLevel) || over(words[3], maxLevel))) return true;
+    if (parts[0] === 'LV') {
+      const w = String(parts[1]).split(' ');
+      return SUMMARY_NAMES.every((name, k) => w[1 + 2 * k] === name)
+        && (over(w[0], maxLevel) || SUMMARY_NAMES.some((name, k) => over(w[2 + 2 * k], maxStatus[k])));
+    }
+    if (words[0] === 'Status') {
+      const cells = String(parts[1]).split(' ').join('').split(',');
+      if (cells.length !== 78 && cells.length !== 46) return false;
+      return over(cells[0], maxLevel) || [0, 1, 2, 3, 4, 5, 6].some((k) => over(cells[6 + k], maxStatus[k]));
+    }
+    return false;
+  });
+}
+
 function createOracle(root = REPO, opts) {
   const S = createSim(root, opts);
   let lastError = null;
@@ -504,7 +547,9 @@ function createOracle(root = REPO, opts) {
         error = act(() => { S.logarea.text = s; S.logLoadPress(); });
       } finally { S.changeChar = orig.changeChar; S.changeStyle = orig.changeStyle; S.reset = orig.reset; }
       const ok = flags.footer || flags.restarted || JSON.stringify(rawState(S, { logText: false })) !== before;
-      return withError({ ok, sound: null, footer: flags.footer, typeFound: flags.typeFound, restarted: flags.restarted }, error);
+      // capped: logLoad 가 읽은 글(로그 상자에 넣은 글)에 상한을 넘는 값이 있었다
+      const capped = overCapText(asText(s), S.MAX_LEVEL, S.MAX_STATUS);
+      return withError({ ok, sound: null, footer: flags.footer, typeFound: flags.typeFound, restarted: flags.restarted, capped }, error);
     },
     guide() {
       const pane = S.logarea.text;

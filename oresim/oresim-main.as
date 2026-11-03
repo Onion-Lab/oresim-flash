@@ -1625,6 +1625,16 @@ public function logLoad():void {
                 if(a.length == 46) {
                     la[76] = la[2];
                 }
+                // 지금 상한을 넘는 LV와 일곱 스탯은 상한으로 읽는다. 상한이 285이던 판에서 스탯 편집 창으로 만든 로그도
+                // 이 판(2026-11부터 상한 255)의 계획이 된다. 상한이 바뀐 이 여덟 칸만 보고, 상한 이하의 값과 수가 아닌 값은 그대로다
+                if(la[0] > MAX_LEVEL) {
+                    la[0] = MAX_LEVEL;
+                }
+                for(m = 0; m < 7; m++) {
+                    if(la[6 + m] > MAX_STATUS[m]) {
+                        la[6 + m] = MAX_STATUS[m];
+                    }
+                }
                 la[77] = 1;
                 stLog[la[0] - 1] = "s";
                 tmpStLog[la[0] - 1] = "s";

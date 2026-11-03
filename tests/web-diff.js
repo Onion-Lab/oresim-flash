@@ -10,7 +10,7 @@
  *   - 대시 단추의 'N까지'(와 aria-label 의 레벨업 횟수·LV) = 원본에서 그 대시가 실제로 끝나는 곳. 몇 조작마다(WEBDIFF_PROBE)
  *     원본을 처음부터 다시 돌린 사본에서 일곱 대시와 다음 레벨업을 실제로 해 보고, 대시·레벨업을 할 때마다 바로 앞 화면의
  *     이름표와 '다음 레벨업'을 원본이 실제로 한 결과와 맞춘다
- *   - 확인 창의 글(지울 계획과 바꿀 계획의 이름·LV), 로그 불러오기 뒤의 안내, 붙여넣은 로그 칸을 비우는지
+ *   - 확인 창의 글(지울 계획과 바꿀 계획의 이름·LV), 로그 불러오기 뒤의 안내(와 그 색조), 붙여넣은 로그 칸을 비우는지
  *   - POINT 밑 한 줄('STAB 3회(12) 찍으면 2 남음' 등, 화면이 셈한 말)을 원본 사본에서 +1 을 그만큼 눌러 맞춘다
  *   - 육성 가이드 탭이 보이면 그 패널(그린 글자, 제목, 재분배 순서의 줄 수, 가이드 안 로그 표)
  * 너비 셋을 돌아가며 쓴다: 1440×900(옆 목록, 상단 바), 1024×768(아래 바), 390×844(아래 바, 캐릭터 시트의 편집·초기화).
@@ -18,7 +18,7 @@
  * 타자(반올림·범위 맞춤이 필요한 값, 숫자로 읽을 수 없는 값; Enter/Tab)와 −/+, 주력 계열 줄 클릭(고를 수 있는 줄과 없는 줄)과
  * ↑/↓, 캐릭터·타입 바꾸기(옆 목록, 캐릭터 시트; 확인 창의 바꾸기/취소/Esc/바깥), 스탯 초기화, 스탯 편집(T·단추·시트, 범위 밖 값,
  * 소수; 적용/Enter/취소/Esc), 붙여넣은 로그 불러오기(제 로그, 푸터 없는 로그, 망가진 로그, 다른 캐릭터의 로그, 일본어판 로그,
- * 읽을 줄 없는 글, 빈 칸; 붙여넣기 단추/Ctrl+V/타자 → 단추/P/Ctrl+Enter), 탭 바꾸기(클릭, G), 복사, 새로 고침(자동 저장).
+ * 읽을 줄 없는 글, 빈 칸, 상한이 285이던 판의 로그; 붙여넣기 단추/Ctrl+V/타자 → 단추/P/Ctrl+Enter), 탭 바꾸기(클릭, G), 복사, 새로 고침(자동 저장).
  * 원본에는 화면에서 한 조작을 사람이 원본에서 했을 입력 그대로 넣는다(화면이 엔진에 보낸 값을 받아 쓰지 않는다). 화면에서 꺼진
  * 단추를 누르거나 확인 창에서 취소하면 원본에는 아무것도 넣지 않는다.
  * 어긋나면 seed, 몇 번째 조작인지, 조작 목록, 다른 칸을 찍고 그 seed 를 멈춘다(다음 seed 는 계속). 하나라도 있으면 종료 코드 1.
@@ -89,6 +89,11 @@ const ro = (w) => { const c = w.charCodeAt(w.length - 1); if (c < 0xac00 || c > 
 const splitLine = (name) => { const m = String(name).match(/^(.+?)\s+([A-Z]+)\/([A-Z]+)$/); return m ? { line: m[1], main: m[2], bonus: m[3] } : { line: name, main: null, bonus: null }; };
 const KEEP_IT = '남겨 두려면 먼저 링크 복사를 하세요.';
 const JA_AFTER = '일본어판에서 만든 로그로 보입니다. 캐릭터·계열 이름이 달라 결과가 원래 계획과 다를 수 있습니다.';
+// 타입 이름을 알아보지 못한 붙여넣은 로그의 안내 끝에 붙는 고치는 법(승인된 문구)
+const FIX_TYPE = '다른 타입이었다면 로그 끝의 캐릭터/타입 줄을 지금 이름(예: 루시안/베기형)으로 고쳐 다시 불러오세요.';
+// 글에 지금 상한을 넘는 값이 있어 상한에 맞춰 읽은 불러오기(원본 하네스 importLog 의 capped). 읽기가 중간에 멈췄으면(error) 말하지 않는다
+const cappedRead = (r) => !!(r && r.capped && !r.error);
+const capWords = (done) => `LV나 스탯이 상한(${fmt(MAX_LV)})을 넘어 상한에 맞춰 ${done ? '읽었습니다' : '읽습니다'}.`;
 const STEP_ACTS = new Set(['levelUp', 'statUp', 'dash', 'undo', 'redo', 'editCommit']);
 // 화면 너비 셋: 넓은 화면(옆 목록, 상단 바), 중간(아래 바, 제목 줄의 타입·편집·초기화), 휴대폰(아래 바, 캐릭터 시트가 타입·편집·초기화를 가진다)
 const LAYOUTS = { wide: { width: 1440, height: 900 }, mid: { width: 1024, height: 768 }, phone: { width: 390, height: 844 } };
@@ -398,6 +403,28 @@ function garble(R, text, n) {
   return L.join('\r\n');
 }
 const footerless = (text) => text.split(/\r\n|\r|\n/).filter((s) => !/ Bonus: /.test(s) && !/^LV:/.test(s)).join('\r\n');
+// 상한이 285이던 판(8e716ce)이 쓴 재분배 로그의 모양. 값은 지금 표의 상한에서 셈한다(상한 255 에서는 그 판의 값 그대로)
+//  oldEditLog(type): 스탯 편집으로 LV 최고 레벨+15(270), STAB 상한+25(280), DEX 상한+15(270)에서 시작해 편집 레벨에서 STAB 3번, 보너스 75%,
+//    다음 레벨에 DEX·STAB, 그 뒤 최고 레벨+30(285)까지 간 루시안 계획. type: 캐릭터/타입 줄의 타입 이름(그 판의 이름 '베기' 또는 지금 이름)
+//  oldPlainLog(): 스탯 편집 없이 최고 레벨+30(285)까지 간 밀라/물리복합 계획(몰빵 줄, 최고 레벨을 넘는 범위 줄)
+function oldEditLog(type) {
+  const lv = MAX_LV + 15, end = MAX_LV + 30;
+  const status = [lv, 10, 50, 0, 0, 0, STAT_CAP[0] + 25, 120, 10, 60, 30, STAT_CAP[5] + 15, 40, 240, 55, 900, 0, 300, 240, 55, 900, 0, 240, 55, 900, 0]
+    .concat(Array.from({ length: 50 }, (_, x) => (x === 10 ? 1 : 0)), [50, 1]);
+  return [`Status       : ${status.join(', ')}`, `LV ${lv}       : STAB * 3`, 'Bonus        : 75%', `LV ${lv + 1}       : DEX * 15, STAB * 2`, `LV ${lv + 2} - ${end} : `,
+    `루시안/${type} Bonus: 11 / 15 Point: 181`, `LV:${end} STAB ${STAT_CAP[0] + 30} HACK 135 INT 10 DEF 71 MR 30 DEX ${STAT_CAP[5] + 30} AGI 40`].join('\r\n');
+}
+function oldPlainLog() {
+  const end = MAX_LV + 30;
+  return ['LV   1       :', 'Bonus        : 50%', 'Xien         : 편계 HACK/DEX', `LV   2 - ${MAX_LV - 55} : STAB 몰빵 180회`, `LV ${MAX_LV - 54} - ${MAX_LV - 15} : HACK, DEX`,
+    `LV ${MAX_LV - 14} - ${end} : DEX 몰빵 40회`, `밀라/물리복합 Bonus: 142 / ${end - 1} Point: 0`, `LV:${end} STAB 223 HACK ${STAT_CAP[1] + 30} INT 1 DEF 1 MR 2 DEX 201 AGI 2`].join('\r\n');
+}
+//  oldAllInLog(): 스탯 편집 없이 STAB 을 몰빵해 LV 170 에서 STAB 이 상한 + 30(285)이 된 막시민/물리복합 계획. LV 줄은 모두 상한 안이고
+//    상한을 넘는 값은 끝의 LV: 요약 줄에만 있다(그 판이 쓴 로그 그대로. 요약 줄의 STAB 만 지금 표의 상한에서 셈한다)
+function oldAllInLog() {
+  return ['LV   1       :', 'Bonus        : 50%', 'Xien         : 검계 STAB/DEX', 'LV   2 - 155 : STAB 몰빵 128회', 'LV 156 - 170 : ',
+    '막시민/물리복합 Bonus: 84 / 169 Point: 114', `LV:170 STAB ${STAT_CAP[0] + 30} HACK 4 INT 1 DEF 2 MR 1 DEX 86 AGI 1`].join('\r\n');
+}
 
 // ---- 한 판(seed 또는 정해 둔 순서): 브라우저 화면과 원본을 같은 조작으로 움직인다 ----
 class Divergence extends Error {}
@@ -972,7 +999,8 @@ class Run {
     if (after.open) {
       const cv = oracleNow(B.S);
       const how = rb.restarted ? ' 이 로그에는 캐릭터/타입 줄이 없어 지금 고른 캐릭터/타입으로 읽습니다.' : rb.footer && !rb.typeFound ? ` 타입 이름을 알아보지 못해 첫 타입(${cv.typeName})으로 읽습니다.` : '';
-      go = await this.confirmDecide({ title: '로그를 불러올까요?', desc: `지금 계획(${planNow(o)})은 지워지고 붙여넣은 로그(${cv.charName}/${cv.typeName}, LV${NB}${fmt(cv.lv)})로 다시 만듭니다.${how} ${KEEP_IT}`, go: '불러오기' }, decision, 'importLog', n0);
+      const over = cappedRead(rb) ? ` ${capWords(false)}` : '';
+      go = await this.confirmDecide({ title: '로그를 불러올까요?', desc: `지금 계획(${planNow(o)})은 지워지고 붙여넣은 로그(${cv.charName}/${cv.typeName}, LV${NB}${fmt(cv.lv)})로 다시 만듭니다.${how}${over} ${KEEP_IT}`, go: '불러오기' }, decision, 'importLog', n0);
     } else await this.waitAct('importLog', n0);
     if (!go) return;
     const r = this.oc('importLog', text);
@@ -983,15 +1011,21 @@ class Run {
     const got = [];
     if (cv.bonus.rate !== o.bonus.rate) got.push(`보너스 ${cv.bonus.rate}%`);
     if (cv.xien.selected !== o.xien.selected) { const l = cv.xien.lines.find((x) => x.x === cv.xien.selected); got.push(`주력 계열 ${l ? l.name : cv.xien.selected}`); }
+    // 상한을 넘는 값을 상한에 맞춰 읽었으면 그것도 말한다(설정 줄만 읽은 경우와 오류가 난 경우는 빼고). 그것만이면 색조가 ok 가 아니라 info
+    const over = cappedRead(r) ? ` ${capWords(true)}` : '';
     const want = r.error ? '로그를 끝까지 읽지 못했습니다. 읽은 데까지만 반영했습니다. 형식이 맞는지 확인하세요.'
       : keptPlan(r) ? `캐릭터/타입 줄과 LV 줄이 없어 지금 계획에 설정만 반영했습니다${got.length ? `: ${got.join(', ')}` : ''}.`
-      : r.restarted ? `캐릭터/타입 줄이 없어 지금 고른 ${cv.charName}/${cv.typeName}${ro(cv.typeName)} 처음부터 읽었습니다.${looksJapanese(text) ? ` ${JA_AFTER}` : ''}`
-        : r.footer && !r.typeFound ? `로그를 불러왔습니다: ${who}. 타입 이름을 알아보지 못해 첫 타입(${cv.typeName})으로 읽었습니다.`
-          : `로그를 불러왔습니다: ${who}.`;
-    const end = await page.evaluate(() => ({ msg: document.querySelector('#load-msg').textContent.replace(/\u2060/g, ''), value: document.querySelector('#paste-text').value, active: document.activeElement === document.body ? 'BODY' : document.activeElement.id }));
+      : r.restarted ? `캐릭터/타입 줄이 없어 지금 고른 ${cv.charName}/${cv.typeName}${ro(cv.typeName)} 처음부터 읽었습니다.${over}${looksJapanese(text) ? ` ${JA_AFTER}` : ''}`
+        : r.footer && !r.typeFound ? `로그를 불러왔습니다: ${who}. 타입 이름을 알아보지 못해 첫 타입(${cv.typeName})으로 읽었습니다.${over} ${FIX_TYPE}`
+          : `로그를 불러왔습니다: ${who}.${over}`;
+    const wantTone = r.error ? 'error' : keptPlan(r) || r.restarted || (r.footer && !r.typeFound) || over ? 'info' : 'ok';
+    const end = await page.evaluate(() => ({ msg: document.querySelector('#load-msg').textContent.replace(/\u2060/g, ''), tone: document.querySelector('#load-msg').dataset.tone || '', value: document.querySelector('#paste-text').value, active: document.activeElement === document.body ? 'BODY' : document.activeElement.id }));
     const msgs = [];
-    if (end.msg !== want) msgs.push(`불러온 뒤 안내: 화면 ${JSON.stringify(end.msg)} / 원본(footer ${r.footer}, typeFound ${r.typeFound}, restarted ${r.restarted}, error ${!!r.error}) ${JSON.stringify(want)}`);
-    const clean = r.footer && !r.error;
+    if (end.msg !== want) msgs.push(`불러온 뒤 안내: 화면 ${JSON.stringify(end.msg)} / 원본(footer ${r.footer}, typeFound ${r.typeFound}, restarted ${r.restarted}, capped ${r.capped}, error ${!!r.error}) ${JSON.stringify(want)}`);
+    if (end.tone !== wantTone) msgs.push(`불러온 뒤 안내의 색조: 화면 ${JSON.stringify(end.tone)} / 원본(capped ${r.capped}, error ${!!r.error}) ${JSON.stringify(wantTone)}`);
+    if (over) this.stats.imports.cappedRead = (this.stats.imports.cappedRead || 0) + 1;   // 상한에 맞춰 읽었다고 알린 불러오기(세어 두기만)
+    // 깨끗이 읽음: 캐릭터/타입 줄의 캐릭터와 타입을 알아봤고 오류가 없다(타입을 알아보지 못했으면 그 줄을 고쳐 다시 불러오게 글을 남긴다)
+    const clean = r.footer && r.typeFound && !r.error;
     if ((end.value === '') !== clean) msgs.push(`불러온 뒤 칸: ${end.value === '' ? '비움' : '남김'} / 깨끗이 읽음 ${clean}`);
     // 불러오기가 초점을 <body> 로 떨어뜨리면 안 된다. 다만 P 는 초점을 옮기지 않으므로(원본도 처리 끝에 application.setFocus()), 칸에서
     // Esc 로 나와 <body> 에 있던 초점은 묻지 않고 읽은 뒤에도 <body> 그대로다(확인 창을 거치면 연 단추 '로그 불러오기'로 돌아간다)
@@ -1271,9 +1305,9 @@ const SCRIPT_LIST = [
     r.step++; await r.statEdit('T', { lv: String(lv), s0: String(v + 10), s1: String(v), s5: String(STAT_CAP[5] - 1), s6: String(v - 1), point: '9999' }, 'apply'); await r.check({ probe: true, both: true });
     for (const a of [() => r.keyStat(0), () => r.keyStat(5), () => r.keyStat(6), () => r.keyDash(1), () => r.keyLevelUp(), () => r.keyStat(2), () => r.keyHistory(false, false), () => r.keyHistory(true, false)]) { r.step++; await a(); await r.check({ probe: true, both: true }); }
   }],
-  // 2026-11 전의 판에서 만든 로그(타입 이름이 '베기'): 캐릭터는 알아보고 타입은 첫 타입으로 읽으며 그렇다고 알린다. 그 줄을 지금 이름으로
-  // 고친 로그는 그 타입으로 읽는다
-  ['옛 판의 타입 이름(루시안/베기): 첫 타입으로 읽는다, 지금 이름으로 고친 로그 불러오기', async (r) => {
+  // 2026-11 전의 판에서 만든 로그(타입 이름이 '베기'): 캐릭터는 알아보고 타입은 첫 타입으로 읽는다. 글을 칸에 남기고, 그 줄을 지금 이름으로
+  // 고쳐 다시 불러오면 깨끗이 읽어 칸을 비운다
+  ['옛 판의 타입 이름(루시안/베기): 첫 타입으로 읽고 글을 남긴다, 고쳐서 다시 불러오기', async (r) => {
     r.step++; await r.typeChange(1, 'side', 'go'); await r.check({});
     r.step++; await r.runKeys('KeyL', 8, 'levelUp'); await r.check({});
     r.step++; await r.runKeys('KeyS', 3, 'statUp', 0); await r.check({});
@@ -1281,6 +1315,32 @@ const SCRIPT_LIST = [
     const old = own.replace(/^([^ /\r\n]+)\/[^ \r\n]+ Bonus:/m, '$1/베기 Bonus:');
     r.step++; await r.importLog('unknownType', old, 'type', 'click', 'go'); await r.check({ probe: true, both: true });
     r.step++; await r.importLog('own', own, 'type', 'ctrlEnter', 'go'); await r.check({ probe: true, both: true });
+  }],
+  // 아래 둘도 끝에 둔다(PHONE_TOO 의 번호와 앞 순서들의 seed 가 그대로이게).
+  // 상한이 285이던 판에서 스탯 편집으로 상한을 넘게 시작한 계획의 로그(oldEditLog): 원본처럼 LV 와 스탯을 상한으로 읽고, 확인 창과 불러온 뒤의
+  // 안내가 그렇다고 말한다. 그 판의 타입 이름(루시안/베기)이면 첫 타입으로도 읽고 고치는 법을 말하며 글을 남긴다. 지금 이름으로 고쳐 다시
+  // 불러오면 깨끗이 읽어 칸을 비운다. 그 뒤 최고 레벨·스탯 상한에서 조작한다
+  [`상한을 넘는 옛 스탯 편집 로그(Status LV ${MAX_LV + 15}, STAB ${STAT_CAP[0] + 25}): 상한으로 읽고 알린다`, async (r) => {
+    r.step++; await r.runKeys('KeyL', 5, 'levelUp'); await r.check({});
+    r.step++; await r.importLog('capped', oldEditLog('베기'), 'type', 'click', 'go'); await r.check({ probe: true, both: true });
+    r.step++; await r.importLog('capped', oldEditLog('베기형'), 'pasteBtn', 'P', 'go'); await r.check({ probe: true, both: true });
+    for (const a of [() => r.keyLevelUp(), () => r.keyStat(0), () => r.keyStat(1), () => r.keyDash(3), () => r.keyHistory(false, false), () => r.keyHistory(true, false)]) { r.step++; await a(); await r.check({ probe: true, both: true }); }
+  }],
+  // 상한이 285이던 판에서 LV 285 까지 간 보통 계획의 로그(oldPlainLog): 최고 레벨을 넘는 레벨은 원본처럼 레벨업 없이 그 투자만 최고 레벨에서
+  // 한다. 상한에 맞춰 읽었다고 알린다. 캐릭터/타입 줄을 지운 같은 로그는 지금 고른 캐릭터/타입으로 처음부터 읽고 그것도 말한다
+  [`LV ${MAX_LV + 30} 까지 간 옛 로그: 최고 레벨에서 멈추고 알린다`, async (r) => {
+    r.step++; await r.runKeys('KeyL', 3, 'levelUp'); await r.check({});
+    r.step++; await r.importLog('capped', oldPlainLog(), 'ctrlV', 'ctrlEnter', 'go'); await r.check({ probe: true, both: true });
+    r.step++; await r.importLog('capped', footerless(oldPlainLog()), 'type', 'click', 'go'); await r.check({ probe: true, both: true });
+    for (const a of [() => r.keyLevelUp(), () => r.keyDash(5), () => r.keyHistory(false, true), () => r.keyHistory(true, true)]) { r.step++; await a(); await r.check({ probe: true }); }
+  }],
+  // 이 순서도 끝에 둔다(PHONE_TOO 의 번호와 앞 순서들의 seed 가 그대로이게).
+  // 상한이 285이던 판에서 스탯 편집 없이 LV 256 전에 스탯이 상한을 넘은 몰빵 계획의 로그(oldAllInLog): 상한을 넘는 값은 끝의 LV: 요약 줄에만 있다.
+  // 원본처럼 요약 줄은 읽지 않고 그 스탯은 상한에서 멈추며, 확인 창과 불러온 뒤의 안내가 상한에 맞춰 읽었다고 말하고 칸을 비운다
+  [`LV ${MAX_LV + 1} 전에 스탯이 상한을 넘은 옛 몰빵 로그(요약 줄 STAB ${STAT_CAP[0] + 30}): 상한에 맞춰 읽고 알린다`, async (r) => {
+    r.step++; await r.runKeys('KeyL', 4, 'levelUp'); await r.check({});
+    r.step++; await r.importLog('capped', oldAllInLog(), 'type', 'click', 'go'); await r.check({ probe: true, both: true });
+    for (const a of [() => r.keyLevelUp(), () => r.keyStat(0), () => r.keyDash(5), () => r.keyHistory(false, false)]) { r.step++; await a(); await r.check({ probe: true }); }
   }],
 ];
 
@@ -1302,7 +1362,9 @@ const SCRIPT_LIST = [
     for (const [k, step, m] of run.known) { (total.known[k] = total.known[k] || []).push(`${run.name} #${step}: ${m}`); }
   };
   if (SCRIPTS !== '0') {
-    const PHONE_TOO = new Set([3, 7, 8, 9]);   // 스탯 편집 LV 1, 스탯 편집 직후 확인 창, 불러오기 중간 멈춤, 처음까지 되돌린 계획: 휴대폰 너비(캐릭터 시트의 편집·초기화, 아래 바)에서도
+    // 스탯 편집 LV 1, 스탯 편집 직후 확인 창, 불러오기 중간 멈춤, 처음까지 되돌린 계획, 상한을 넘는 옛 스탯 편집 로그: 휴대폰 너비(캐릭터 시트의
+    // 편집·초기화, 아래 바, 언제나 펼친 붙여넣은 로그 칸)에서도
+    const PHONE_TOO = new Set([3, 7, 8, 9, 16]);
     const jobs = [];
     const pickName = SCRIPTS.startsWith('only:') ? SCRIPTS.slice(5) : '';
     SCRIPT_LIST.forEach(([name, body], k) => {

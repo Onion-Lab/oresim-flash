@@ -2,7 +2,7 @@
 /*
  * 차등 퍼저: 같은 무작위 조작을 원본(tests/harness.js, AS3 를 헤드리스로 실행)과 웹 엔진(web/js/engine.js)에 넣고,
  * 조작마다 다음이 모두 같은지 본다. 처음 어긋난 곳에서 seed, 몇 번째 조작인지, 조작 목록, 다른 칸을 찍고 멈춘다.
- *   - 조작의 결과값({ ok, sound, error }, importLog 의 footer/typeFound/restarted 등)
+ *   - 조작의 결과값({ ok, sound, error }, importLog 의 footer/typeFound/restarted/capped 등)
  *   - 상태 전체: 컨트롤 글자 전부, 버튼 표시, 콤보박스(번호·항목·목록), 드롭다운 색, 보너스 스테퍼,
  *     _xi, _needXien, _bonusPoints, logindex 등 전역, log 배열 전체(센티널과 그 뒤 옛 항목까지), stLog, tmpStLog,
  *     logarea 글 = logPane()(원본이 logOut 을 부르는 곳에서만 바뀌므로 호출 위치까지 확인된다)
@@ -11,7 +11,7 @@
  *   - view() 와 원본 상태에서 따로 계산한 화면 값, exportLog(), guide(), editOpen()
  *   - preview() / previewDash(i) 가 그 뒤 원본이 실제로 한 레벨업·대시와 같은지
  * 무작위 조작 전에 매번 (1) 정해 둔 조작 순서(scripts), (2) 손으로 고른 경계 입력(edgeCorpus), (3) 답을 아는 AS3 의미 확인
- * (knownAnswers: \s 다듬기·parseInt 의 공백), (4) 원본이 몇 초 걸리는 큰 입력(heavyCases)을 새 쌍에서 비교한다.
+ * (knownAnswers: \s 다듬기·parseInt 의 공백, 상한을 넘는 값 읽기), (4) 원본이 몇 초 걸리는 큰 입력(heavyCases)을 새 쌍에서 비교한다.
  * 사용법: node tests/engine-diff.js [seeds=50] [actionsPerSeed=400] [firstSeed=1]
  *         DIFF_VERBOSE=1 이면 조작을 하나씩 찍는다.
  */
@@ -191,13 +191,14 @@ function makeLogTools(R) {
   const C = Oresim.CONST;
   const bigNum = () => pick([0, 1, 2, 3, 5, 10, 15, 30, 60, 100, 150, 200, 250, ...CAP_EDGE, 300, 400, -1, -3, 999, 1500]);
   const anyXienName = () => pick(C.XIEN_NAME);
-  const statusValues = (n) => Array.from({ length: n }, (_, k) => {
+  // over: 상한이 지금보다 높던 판(2026-11 전에는 285)의 계획처럼 LV·스탯이 상한을 30까지 넘을 수 있다
+  const statusValues = (n, over) => Array.from({ length: n }, (_, k) => {
     if (chance(0.03)) return pick(['abc', '', 'NaN', '-5', ' 7 ', '1e3', '0x1A', '12.7']);
-    if (k === 0) return 1 + ri(MAX_LV);
+    if (k === 0) return 1 + ri(MAX_LV + (over ? 30 : 0));
     if (k === 1) return pick([0, 9, 10, 12, 13, 26, 30, 35, 36, 49, 60]);
     if (k === 2) return pick([0, 25, 50, 75, 100, 7, 33]);
     if (k < 6) return ri(150);
-    if (k < 13) return 1 + ri(STAT_CAP[k - 6]);
+    if (k < 13) return 1 + ri(STAT_CAP[k - 6] + (over ? 30 : 0));
     if (k < 26) return ri(12000);
     if (k < 76) return chance(0.8) ? 0 : ri(60);
     return ri(100);
@@ -260,6 +261,13 @@ function makeLogTools(R) {
     (L) => { L.splice(1 + ri(Math.max(1, L.length - 2)), 0, 'Xien         : ' + anyXienName()); },
     (L) => { const i = L.findIndex((s) => /^LV.*: [A-Z]/.test(s)); if (i >= 0) L[i] = L[i].replace(/: ([A-Z]+)/, () => `: ${pick(STATS)}`); },
     (L) => { const f = L.findIndex((s) => / Bonus: /.test(s)); const lvs = L.map((s) => /^LV +(\d+)(?: - +(\d+))? :/.exec(s)).filter(Boolean); const last = lvs.length ? +(lvs[lvs.length - 1][2] || lvs[lvs.length - 1][1]) : 1; if (f >= 0) L.splice(f, 0, `LV ${Math.min(last + 1, MAX_LV)}       : ${pick(STATS)} * 2, ${pick(STATS)}`); },
+    // 상한이 285이던 판의 LV: 요약 줄처럼 LV 나 스탯 하나를 상한 둘레(상한 − 1 ~ 상한 + 30)로: 상한을 넘으면 capped(읽기는 그대로)
+    (L) => {
+      const i = L.findIndex((s) => /^LV:/.test(s));
+      if (i < 0) return;
+      const k = ri(8), near = (cap) => pick([cap - 1, cap, cap + 1, cap + 30]);
+      L[i] = k === 7 ? L[i].replace(/^LV:\d+/, () => `LV:${near(MAX_LV)}`) : L[i].replace(new RegExp(` ${STATS[k]} \\d+`), () => ` ${STATS[k]} ${near(STAT_CAP[k])}`);
+    },
   ];
   const garble = (text, n) => { const L = text.split('\r'); for (let k = 0; k < n; k++) pick(OPS)(L); return L.join(pick(['\r', '\r', '\r', '\n', '\r\n'])); };
   const hand = (text) => { const L = text.split('\r'); const k = 1 + ri(3); for (let j = 0; j < k; j++) pick(HAND)(L); return L.join('\r'); };
@@ -278,8 +286,9 @@ function makeLogTools(R) {
   };
   const statusLv = (S) => {
     const n = pick([78, 78, 46]);
-    const vals = statusValues(n).split(', ');
-    const lv0 = pick([1, 2, 10, 50, 120, 199, 200, 250, MAX_LV - 1, MAX_LV]);
+    const over = chance(0.35);   // 상한을 넘는 Status 줄(옛 판의 스탯 편집 계획): 상한으로 읽힌다(capped)
+    const vals = statusValues(n, over).split(', ');
+    const lv0 = over ? pick([MAX_LV - 1, MAX_LV, MAX_LV + 1, MAX_LV + 15, MAX_LV + 30]) : pick([1, 2, 10, 50, 120, 199, 200, 250, MAX_LV - 1, MAX_LV]);
     vals[0] = String(lv0);
     vals[2] = String(pick([0, 5, 25, 50, 75, 100, 7, 33, 103, -5, 'abc', '', 2.5, 98]));
     if (n === 78) vals[76] = String(pick([50, 7, 33, 100, 0, 'x']));
@@ -348,6 +357,11 @@ function edgeCorpus() {
   const C = Oresim.CONST;
   const z50 = Array(50).fill(0);
   const status = (lv, bonus, tail) => 'Status       : ' + [lv, 10, bonus, 0, 0, 0, 4, 3, 1, 2, 1, 2, 2, 220, 50, 1000, 0, 5, 220, 50, 1000, 0, 220, 50, 1000, 0].concat(z50, tail || [50, 1]).join(', ');
+  // Status 줄(n = 78: 지금 형식, 46: Xien 20계열 시절 형식): LV 와 일곱 스탯을 주고 나머지는 보통 값.
+  // mid = 13~25번 칸(HP/MP/SP, 0, POINT, 최소 셋, 0, 최대 셋, 0). 주지 않으면 POINT 300 의 보통 값
+  const oldStatus = (lv, stats, n, mid) => 'Status       : ' + [lv, 10, 50, 0, 0, 0].concat(stats, mid || [2400, 550, 9000, 0, 300, 2400, 550, 9000, 0, 2400, 550, 9000, 0],
+    n === 46 ? Array(20).fill(0) : z50.concat([50, 1])).join(', ');
+  const H7 = C.MAX_STATUS.slice(7, 10);   // HP/MP/SP 상한
   const foot = (c, s) => `${C.CHAR_NAME[c]}/${C.STYLE_NAME[c][s]} Bonus: 0 / 0 Point: 0`;
   const x = (i) => C.XIEN_NAME[i];
   return [
@@ -391,6 +405,43 @@ function edgeCorpus() {
     ['로아미니 시작 레벨부터 범위', ['LV 200 - 210 : INT * 3', foot(15, 0)].join('\r')],
     ['편집 레벨부터 범위(포인트 없음)', [status(120, 50).replace(/^(Status {7}: (?:[^,]+, ){17})5,/, '$10,'), 'LV 120 - 126 : STAB * 9, DEX', foot(0, 0)].join('\r')],
     ['편집 레벨부터 몰빵(포인트 없음)', [status(120, 50).replace(/^(Status {7}: (?:[^,]+, ){17})5,/, '$10,'), 'LV 120 - 126 : HACK 몰빵 3회', foot(0, 0)].join('\r')],
+    // 상한이 지금보다 높던 판(2026-11 전에는 285)의 계획. Status 줄의 LV·스탯이 상한을 넘으면 상한으로 읽고(importLog 의 capped),
+    // 최고 레벨을 넘는 LV 줄은 레벨업 없이(거절) 최고 레벨에서 투자만 한다. 값은 표의 상한에서 만든다
+    ...[78, 46].map((n) => [`옛 편집 로그 LV ${MAX_LV + 15}(${n}칸)`, [oldStatus(MAX_LV + 15, [STAT_CAP[0] + 25, 120, 10, 60, 30, STAT_CAP[5] + 15, 40], n),
+      `LV ${MAX_LV + 15}       : STAB * 3`, `LV ${MAX_LV + 16} - ${MAX_LV + 25} : DEX`, `LV ${MAX_LV + 26}       : AGI * 2`, foot(0, 0)].join('\r')]),
+    ['옛 편집 로그 스탯만 넘음', [oldStatus(1, [STAT_CAP[0] + 30, STAT_CAP[1] + 30, 5, 5, 5, 5, 5], 78), 'LV   2 -  21 : INT', foot(1, 0)].join('\r')],
+    [`옛 로그 LV 2 - ${MAX_LV + 30}`, ['LV   1       :', `LV   2 - ${MAX_LV + 30} : STAB`, foot(0, 0)].join('\r')],
+    [`옛 로그 LV ${MAX_LV - 4} - ${MAX_LV + 30} 몰빵(로아미니)`, ['LV 200       :', `LV 201 - ${MAX_LV - 5} : INT`, `LV ${MAX_LV - 4} - ${MAX_LV + 30} : MR 몰빵 2회`, foot(15, 0)].join('\r')],
+    ['Status 상한 그대로', [oldStatus(MAX_LV, STAT_CAP, 78), `LV ${MAX_LV}       : STAB, AGI * 2`, foot(0, 0)].join('\r')],
+    ['Status 상한 + 1', [oldStatus(MAX_LV + 1, STAT_CAP.map((v) => v + 1), 78), `LV ${MAX_LV + 1}       : HACK`, foot(0, 0)].join('\r')],
+    ['Status 스탯 하나만 상한 + 1', [oldStatus(MAX_LV - 1, STAT_CAP.map((v, i) => (i === 4 ? v + 1 : v - 9)), 78), `LV ${MAX_LV}       : MR, DEF`, foot(0, 0)].join('\r')],
+    ['Status 수가 아님·음수', [oldStatus('abc', [-5, 'x', 3, -999, 5, '', 7], 78), 'LV   2       : STAB', foot(0, 0)].join('\r')],
+    ['Status 음수 LV·스탯', [oldStatus(-3, [-5, -1, 3, 0, 5, 6, 7], 46), 'LV  -2 -   1 : HACK', foot(0, 0)].join('\r')],
+    ['Status 아주 큰 수(Infinity)', [oldStatus('9'.repeat(400), ['9'.repeat(400), 3, 3, 3, 3, 3, 3], 78), 'LV 300       : DEX', foot(0, 0)].join('\r')],
+    ['푸터 없는 옛 편집 로그', [oldStatus(MAX_LV + 30, [STAT_CAP[0] + 30, 9, 9, 9, 9, 9, 9], 78), `LV ${MAX_LV + 30}       : DEX * 2`].join('\r')],
+    // 상한을 넘어도 그대로 읽는 칸(HP/MP/SP 와 그 범위, POINT): Status 줄에서는 LV 와 일곱 스탯만 상한으로 읽는다
+    ['Status HP·MP·SP·POINT 가 상한을 넘음', [oldStatus(MAX_LV - 5, [40, 30, 10, 20, 10, 20, 20], 78,
+      H7.map((v) => v + 500).concat([0, 99999], H7.map((v) => v + 100), [0], H7.map((v) => v + 900), [0])), foot(0, 0)].join('\r')],
+    // capped 는 글의 성질이다: 읽기가 예외로 멈춰도(error) 같은 값이다(멈춘 곳 앞의 줄이든 뒤의 줄이든)
+    ['상한 넘는 Status 뒤 예외', [oldStatus(MAX_LV + 15, [STAT_CAP[0] + 25, 9, 9, 9, 9, 9, 9], 78), 'Bonus :75%', `LV ${MAX_LV + 16}       : DEX`, foot(0, 0)].join('\r')],
+    ['예외 뒤 상한 넘는 LV 줄', ['LV   1       :', 'Bonus :75%', `LV   2 - ${MAX_LV + 30} : STAB`, foot(0, 0)].join('\r')],
+    ['예외 뒤 상한 넘는 Status', ['LV   1       :', 'Bonus        :', oldStatus(MAX_LV, [STAT_CAP[0], 9, 9, 9, 9, STAT_CAP[5] + 1, 9], 46), foot(0, 0)].join('\r')],
+    // 스탯 편집 없이 LV 256 전에 스탯이 상한을 넘은 옛 계획(몰빵 등): 상한을 넘는 값이 끝의 LV: 요약 줄에만 있다(capped 는 그 줄로 참,
+    // 읽기는 그 줄을 쓰지 않는다). 그 판(8e716ce)이 쓴 로그의 모양이고, 요약 줄의 값은 표의 상한에서 만든다
+    ['옛 몰빵 로그 요약 줄만 상한을 넘음', ['LV   1       :', 'Bonus        : 50%', 'Xien         : ' + x(9), 'LV   2 - 155 : STAB 몰빵 128회', 'LV 156 - 170 : ',
+      `${C.CHAR_NAME[2]}/${C.STYLE_NAME[2][0]} Bonus: 84 / 169 Point: 114`, `LV:170 STAB ${STAT_CAP[0] + 30} HACK 4 INT 1 DEF 2 MR 1 DEX 86 AGI 1`].join('\r')],
+    ['옛 편집 로그 요약 줄만 상한을 넘음', [oldStatus(100, [STAT_CAP[0] - 5, 10, 10, 10, 10, 10, 10], 78), 'LV 100       : STAB * 20', 'LV 101       :', foot(0, 0),
+      `LV:101 STAB ${STAT_CAP[0] + 15} HACK 11 INT 10 DEF 10 MR 10 DEX 10 AGI 10`].join('\r')],
+    ['요약 줄 상한 그대로', ['LV   1       :', 'LV   2 -  30 : DEX', foot(0, 0), `LV:${MAX_LV} ` + STATS.map((s, i) => `${s} ${STAT_CAP[i]}`).join(' ')].join('\r')],
+    ['요약 줄 LV 만 상한 + 1', ['LV   1       :', 'LV   2 -  30 : DEX', foot(0, 0), `LV:${MAX_LV + 1} STAB 9 HACK 9 INT 9 DEF 9 MR 9 DEX 9 AGI 9`].join('\r')],
+    ['요약 줄 모양이 다름', ['LV   1       :', 'LV   2 -  30 : DEX', foot(0, 0), `LV:30 STAB ${STAT_CAP[0] + 30} HACK 9 INT 9 DEF 9 MR 9 DEX 9`,
+      `LV:30 HACK 9 STAB ${STAT_CAP[0] + 30} INT 9 DEF 9 MR 9 DEX 9 AGI 9`, `LV :30 STAB ${STAT_CAP[0] + 30} HACK 9 INT 9 DEF 9 MR 9 DEX 9 AGI 9`,
+      `LV:30 stab ${STAT_CAP[0] + 30} HACK 9 INT 9 DEF 9 MR 9 DEX 9 AGI 9`, 'LV:30 STAB abc HACK -999 INT 9 DEF 9 MR 9 DEX 9 AGI 9'].join('\r')],
+    ['요약 줄 뒤 메모·전각 콜론', ['LV   1       :', 'LV   2 -  30 : DEX', foot(0, 0), `LV${FW[':']}30 STAB 9 HACK 9 INT 9 DEF 9 MR 9 DEX ${STAT_CAP[5] + 1} AGI 9 메모`].join('\r')],
+    ['예외 뒤 상한 넘는 요약 줄', ['LV   1       :', 'Bonus :75%', 'LV   2 -  20 : STAB', foot(0, 0), `LV:20 STAB ${STAT_CAP[0] + 1} HACK 9 INT 9 DEF 9 MR 9 DEX 9 AGI 9`].join('\r')],
+    // 상한을 넘는 요약 줄이 마지막 줄이 아닌 글(끝에 빈 줄·덧붙인 말, 캐릭터/타입 줄 앞): 그래도 capped
+    ['요약 줄 뒤 빈 줄과 덧붙인 말', ['LV   1       :', 'LV   2 -  30 : DEX', foot(0, 0), `LV:30 STAB ${STAT_CAP[0] + 30} HACK 9 INT 9 DEF 9 MR 9 DEX 9 AGI 9`, '', '고마워요', ''].join('\r')],
+    ['캐릭터/타입 줄 앞의 요약 줄', ['LV   1       :', 'LV   2 -  30 : DEX', `LV:30 STAB 9 HACK 9 INT 9 DEF 9 MR 9 DEX ${STAT_CAP[5] + 1} AGI 9`, foot(0, 0)].join('\r')],
   ];
 }
 
@@ -410,6 +461,7 @@ function knownAnswers() {
   const z50 = Array(50).fill(0);
   const status = (vals) => 'Status       : ' + vals.join(', ');
   const sv = (lv, point) => [lv, 10, 50, 0, 0, 0, 4, 3, 1, 2, 1, 2, 2, 220, 50, 1000, 0, point, 220, 50, 1000, 0, 220, 50, 1000, 0].concat(z50, [50, 1]);
+  const edit = (lv, stats) => [lv, 10, 50, 0, 0, 0].concat(stats, [2200, 500, 1000, 0, 300, 2200, 500, 1000, 0, 2200, 500, 1000, 0], z50, [50, 1]);   // POINT 300
   return [
     ...[0xa0, 0x200b, 0x2060, 0x3000, 0xfeff, 0x09, 0x0c].map((c) => kept(ch(c))),
     ...[0x0b, 0x85, 0x1680, 0x2000, 0x200a, 0x2028, 0x2029, 0x202f, 0x205f].map((c) => notKept(ch(c))),
@@ -433,6 +485,19 @@ function knownAnswers() {
     // 16진수 2^53 이상(MathUtils 의 반올림 보정): 0x20000000000003 → 2^53 + 4
     ['parseInt 16진수 보정', [status(sv(120, '0x20000000000003')), foot(0, 0)].join('\r'),
       (v) => (v.point === 9007199254740996 ? null : `point ${v.point}, 기대 9007199254740996`)],
+    // 상한을 넘는 Status 줄의 LV·스탯은 상한으로 읽는다(2026-11, 상한 285 → 255): 상한 값을 적은 글과 같은 계획이 된다.
+    // 편집 레벨(상한을 넘는 LV)의 줄은 레벨업이 거절되고 투자만 한다
+    ['Status 의 LV·스탯이 상한을 넘으면 상한으로 읽기',
+      [status(edit(MAX_LV + 15, [STAT_CAP[0] + 25, 120, 10, 60, 30, STAT_CAP[5] + 15, 40])), `LV ${MAX_LV + 15}       : STAB * 3, AGI`, foot(0, 0)].join('\r'),
+      [status(edit(MAX_LV, [STAT_CAP[0], 120, 10, 60, 30, STAT_CAP[5], 40])), `LV ${MAX_LV}       : STAB * 3, AGI`, foot(0, 0)].join('\r')],
+    // 최고 레벨을 넘는 LV 줄의 레벨은 레벨업 없이(거절) 최고 레벨에서 투자만 한다(포인트가 있는 동안)
+    ['LV 줄이 최고 레벨을 넘으면 최고 레벨에서 투자만',
+      [status(edit(MAX_LV - 5, [40, 30, 10, 20, 10, 20, 20])), `LV ${MAX_LV - 4} - ${MAX_LV + 30} : AGI`, foot(0, 0)].join('\r'),
+      [status(edit(MAX_LV - 5, [40, 30, 10, 20, 10, 20, 20])), `LV ${MAX_LV - 4} - ${MAX_LV} : AGI`, `LV ${MAX_LV}       : AGI * 30`, foot(0, 0)].join('\r')],
+    // LV: 요약 줄은 읽지 않는다(capped 만 정한다): 요약 줄의 LV·스탯이 상한을 넘는 글(옛 판의 몰빵 로그)은 그 줄이 없는 글과 같은 계획이 된다
+    ['LV: 요약 줄은 계획을 바꾸지 않는다',
+      ['LV   1       :', 'LV   2 - 155 : STAB 몰빵 128회', 'LV 156 - 170 : ', foot(2, 0), `LV:${MAX_LV + 30} STAB ${STAT_CAP[0] + 30} HACK 4 INT 1 DEF 2 MR 1 DEX 86 AGI 1`].join('\r'),
+      ['LV   1       :', 'LV   2 - 155 : STAB 몰빵 128회', 'LV 156 - 170 : ', foot(2, 0)].join('\r')],
   ];
 }
 
@@ -451,8 +516,9 @@ function heavyCases() {
     ['LV 2 : STAB * 300001', ['LV   1       :', 'LV   2       : STAB * 300001', foot].join('\r'), after],
     ['몰빵 LV 2 - 300002 뒤 AGI 줄', ['LV   1       :', 'LV   2 - 300002 : STAB 몰빵 1회', 'LV 300003       : AGI', foot].join('\r'), after],
     ['STAB, HACK LV 2 - 160001 뒤 Bonus·AGI 줄', ['LV   1       :', 'LV   2 - 160001 : STAB, HACK', 'Bonus        : 100%', 'LV 160002       : AGI', foot].join('\r'), after],
-    ['Status LV 400000 + 되돌리기', [status(400000, 9999), 'LV 400000       : STAB * 2', foot].join('\r'), [['undo'], ['statUp', 3], ['undo', true], ['redo'], ['levelUp'], ['statUp', 1]]],
-    ['Status LV 400000 POINT 500 + 되돌리기', [status(400000, 500), 'LV 400000       : STAB', foot].join('\r'), [['undo'], ['statUp', 3], ['guide']]],
+    // Status 줄의 아주 큰 LV: 2026-11 부터 상한으로 읽으므로(capped) 이제 무겁지 않다(되돌리기가 그 LV 만큼 돌던 입력). 그 뒤 조작이 원본과 같은지 본다
+    ['Status LV 400000(상한으로 읽음) + 되돌리기', [status(400000, 9999), 'LV 400000       : STAB * 2', foot].join('\r'), [['undo'], ['statUp', 3], ['undo', true], ['redo'], ['levelUp'], ['statUp', 1]]],
+    ['Status LV 400000 POINT 500(상한으로 읽음) + 되돌리기', [status(400000, 500), 'LV 400000       : STAB', foot].join('\r'), [['undo'], ['statUp', 3], ['guide']]],
   ];
 }
 
@@ -610,8 +676,9 @@ function runSeed(seed, steps) {
       hit('editOpen');
     } else if (r < 79) {
       const text = A.exportLog();
-      both(step, 'RT', (X) => X.importLog(text));
+      const res = both(step, 'RT', (X) => X.importLog(text));
       hit('roundtrip.same');
+      hit(`roundtrip.capped.${res.capped}`);   // 내보낸 로그는 상한 안의 값만 쓴다(늘 false)
     } else if (r < 79.8) {
       // 다른 캐릭터를 고른 새 엔진에 읽기
       const text = A.exportLog();
@@ -622,8 +689,9 @@ function runSeed(seed, steps) {
       A = A2; E = E2;
       trace.push(`FRESH(C${c2},T${s2})`);
       check(step, 'fresh');
-      both(step, 'RTF', (X) => X.importLog(text));
+      const res = both(step, 'RTF', (X) => X.importLog(text));
       hit('roundtrip.freshOtherChar');
+      hit(`roundtrip.capped.${res.capped}`);
     } else if (r < 83) {
       let text, kind;
       const k = ri(11);
@@ -641,6 +709,7 @@ function runSeed(seed, steps) {
       else { kind = 'statusLv'; text = T.statusLv(S); if (chance(0.3)) text = T.garble(text, 1); }
       const res = both(step, `IMP:${kind}`, (X) => X.importLog(text));
       hit(`import.${kind}.${res.error ? 'error' : res.ok ? 'ok' : 'nothing'}`);
+      hit(`import.capped.${res.capped}`);   // 상한을 넘는 값이 있는 글(capped: true)과 없는 글이 둘 다 나오는지
     } else if (r < 84.5) {
       // serialize → createEngine 으로 바꿔 끼우고 계속한다
       const saved = JSON.parse(JSON.stringify(E.serialize()));
@@ -713,6 +782,7 @@ for (const [name, steps] of scripts()) {
       if (!msgs.length) msgs.push(...textDiff('exportLog', A.exportLog(), E.exportLog()));
       total++;
       hit(`corpus.${ra.error ? 'error' : ra.ok ? 'ok' : 'nothing'}`);
+      hit(`corpus.capped.${ra.capped}`);
       if (msgs.length) {
         console.log(`\n어긋남: 경계 입력 "${name}" (캐릭터 ${c})`);
         for (const m of msgs) console.log('  - ' + m);

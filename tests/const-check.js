@@ -124,7 +124,8 @@ const C = CONST;
 const nChar = C.CHAR_NAME.length;
 for (const k of ['STYLE_NAME', 'DEFAULT_STATUS', 'DEFAULT_NEED_POINT', 'DEFAULT_XIEN', 'MAX_XIEN']) if (C[k].length < nChar) bad(`${k} 가 캐릭터 수보다 짧다`);
 for (const k of ['XIEN_UP_BONUS', 'XIEN_RANDOM_UP_BONUS', 'MIN_XIEN_UP_STATUS', 'MAX_XIEN_UP_STATUS']) if (C[k].length !== 50) bad(`${k} 가 50칸이 아니다`);
-if (C.BONUS_STATUS_POINT.length < C.MAX_LEVEL) bad('BONUS_STATUS_POINT 가 MAX_LEVEL 보다 짧다');
+// 레벨업 POINT 는 LV 1~최고 레벨에 한 칸씩(lvup 은 최고 레벨에서 거절하므로 그 뒤 칸은 읽히지 않는다. 남는 칸도 두지 않는다)
+if (C.BONUS_STATUS_POINT.length !== C.MAX_LEVEL) bad(`BONUS_STATUS_POINT 가 ${C.BONUS_STATUS_POINT.length}칸이다(LV 1~${C.MAX_LEVEL} 의 MAX_LEVEL 칸이어야 한다)`);
 const xNames = new Set();
 C.XIEN_NAME.forEach((n, i) => {
   if (xNames.has(n)) bad(`XIEN_NAME[${i}] "${n}" 가 겹친다`);

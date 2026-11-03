@@ -463,7 +463,9 @@ input.vol:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .tabpanel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .tabpanel[hidden] { display: none; }
-.log-scroll, .guide { flex: 1; min-height: 0; overflow: auto; margin: 0 -8px; padding: 0 8px 8px; border-radius: var(--radius-chip); scrollbar-width: thin; }
+/* position: relative: 로그 표와 가이드 안의 화면 낭독기용 글(.sr-only, 절대 위치)이 이 칸을 기준으로 자리 잡게 한다. 없으면 바깥을
+   기준으로 잡혀, LV 범위 줄이 있는 계획에서 페이지가 시트 아래 빈 곳까지 스크롤된다 */
+.log-scroll, .guide { position: relative; flex: 1; min-height: 0; overflow: auto; margin: 0 -8px; padding: 0 8px 8px; border-radius: var(--radius-chip); scrollbar-width: thin; }
 .log-scroll:focus-visible, .guide:focus-visible { outline-offset: -2px; }
 
 /* 로그는 진짜 표: LV는 한 열에 오른쪽 맞춤. 스탯 이름은 굵게(시트의 규칙: 굵기는 이름표에), 설정 변경은 바다색 점이 붙은

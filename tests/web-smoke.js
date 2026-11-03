@@ -1,7 +1,9 @@
 // 웹 화면 연기 시험(smoke test): web/ 을 내보내고 진짜 브라우저(Playwright의 Chromium)로 연다.
 // 확인하는 것: 시작, 진짜 키와 클릭으로 한 몇 가지 조작, 화면의 숫자 = OresimUI.engine().view() (와 대시 이름표 =
 // previewDash), 새로 고침 뒤 되살리기(되돌리기 기록까지), 공유 링크 왕복, 지울 계획이 있을 때 링크를 묻는 동안 주소창에 남는 링크,
-// 손으로 만든 무거운 링크의 거절, 붙여넣은 로그 왕복, 앞 판 엔진의 자동 저장(로그에서 다시 만들기), 깨끗한 콘솔.
+// 손으로 만든 무거운 링크의 거절, 붙여넣은 로그 왕복, 앞 판 엔진의 자동 저장(로그에서 다시 만들기, 이름이 바뀐 타입을 첫 타입으로 읽었다는
+// 알림과 그때까지 옛 기록을 두는 것), 그 로그를 담은 공유 링크의 알림, 상한이 285이던 판에서 스탯 편집으로 상한을 넘게 만든 계획의
+// 공유 링크와 자동 저장(상한으로 읽고 알린다), 1440×900 에서 LV 범위 줄이 있어도 페이지가 화면 높이 그대로인지, 깨끗한 콘솔.
 // 공유 링크 왕복에서 알려진 예외 하나: 조작 0회인 계획(처음까지 되돌린 계획 등)의 로그 첫머리 'Bonus' 줄은 원본이 기록 맨 앞 칸에
 // 덧쓴 값이라 받는 쪽에서 같은 글로 다시 만들 수 없다(원본도 같다). 보너스 값은 링크의 b 로 같아진다(web/js/app.js 의 linkCandidate).
 // 저장소는 npm 을 쓰지 않는다: playwright 를 불러오지 못하거나 브라우저를 띄우지 못하면 그렇게 말하고 0 으로 끝낸다.
@@ -193,37 +195,120 @@ const decodeLink = (link) => {
     await page3.click('#load');
     await page3.waitForTimeout(300);
     const loaded = await engineState(page3);
-    const msg = await page3.evaluate(() => document.querySelector('#load-msg').textContent.replace(/ /g, ' '));
+    const msg = await page3.evaluate(() => document.querySelector('#load-msg').textContent.replace(/\u00a0/g, ' '));
     ok(loaded.log === now.log, `pasted log → 로그 불러오기 rebuilds the same plan ("${msg}")`);
     await ctx3.close();
 
-    // ---- 앞 판(ENGINE_VERSION 이 다른 엔진)의 자동 저장: 엔진 상태로는 되살리지 못해 저장된 로그에서 다시 만들어 알리고, 지금 판으로 다시 저장한다 ----
+    // ---- 앞 판(ENGINE_VERSION 이 다른 엔진)의 자동 저장: 엔진 상태로는 되살리지 못해 저장된 로그에서 다시 만들고 알린다.
+    //      2026-11 에 이름이 바뀐 타입(루시안/베기 → 베기형)을 적은 기록은 첫 타입으로 읽었다고도 알리고, 기록은 계획을 바꿀 때까지 그대로 둔다.
+    //      같은 로그를 담은 공유 링크도 열 때 첫 타입으로 읽었다고 알린다 ----
     const old = await page.evaluate(() => {
-      const C = window.Oresim.createEngine();
-      for (let i = 0; i < 5; i++) { C.levelUp(); C.statUp(0); }
-      const v = C.view();
-      const engine = JSON.parse(JSON.stringify(C.serialize()));
-      engine.v = '1';                                                    // 앞 판의 엔진 상태
-      const log = C.exportLog();
-      const rec = { v: 1, engine, log, b: v.bonus.rate, x: v.xien.selected, savedAt: '2026-10-31T00:00:00.000Z' };
-      const W = window.Oresim.createEngine();                           // 받는 쪽이 만들어야 할 계획
-      W.importLog(log); W.setBonus(rec.b); W.setXien(rec.x);
-      return { rec, want: W.exportLog(), version: window.Oresim.ENGINE_VERSION };
+      const mk = (type, oldName) => {
+        const C = window.Oresim.createEngine();
+        if (type) C.setType(type);
+        for (let i = 0; i < 5; i++) { C.levelUp(); C.statUp(0); }
+        const v = C.view();
+        const engine = JSON.parse(JSON.stringify(C.serialize()));
+        engine.v = '1';                                                  // 앞 판의 엔진 상태
+        const log = oldName ? C.exportLog().replace(`${v.charName}/${v.typeName} Bonus:`, `${v.charName}/${oldName} Bonus:`) : C.exportLog();
+        const rec = { v: 1, engine, log, b: v.bonus.rate, x: v.xien.selected, savedAt: '2026-10-31T00:00:00.000Z' };
+        const W = window.Oresim.createEngine();                         // 받는 쪽이 만들어야 할 계획
+        W.importLog(log); W.setBonus(rec.b); W.setXien(rec.x);
+        return { rec, want: W.exportLog(), first: W.view().typeName, version: window.Oresim.ENGINE_VERSION };
+      };
+      return { same: mk(0, null), renamed: mk(1, '베기') };
     });
-    const ctx4 = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    await ctx4.addInitScript((p) => { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('oresim:plan', p); sessionStorage.setItem('seeded', '1'); } }, JSON.stringify(old.rec));
-    const page4 = await newPage(ctx4);
-    await page4.goto(base + 'index.html');
-    await page4.waitForTimeout(600);
-    const s = await page4.evaluate(() => {
+    const bootWith = async (rec, url) => {
+      const c = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      if (rec) await c.addInitScript((p) => { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('oresim:plan', p); sessionStorage.setItem('seeded', '1'); } }, JSON.stringify(rec));
+      const p = await newPage(c);
+      await p.goto(url || base + 'index.html');
+      await p.waitForTimeout(600);
+      return { c, p };
+    };
+    const seen = (p) => p.evaluate(() => {
       let rec = null;
       try { rec = JSON.parse(localStorage.getItem('oresim:plan')); } catch (_) { rec = null; }
       const n = document.querySelector('#notice');
       return { log: window.OresimUI.engine().exportLog(), notice: n.hidden ? '' : document.querySelector('#notice-text').textContent.replace(/\u2060/g, ''), rec };
     });
-    ok(s.log === old.want && s.notice === '저장된 계획을 재분배 로그에서 다시 만들었습니다. 되돌리기 기록은 이어지지 않습니다.' && s.rec && s.rec.engine && s.rec.engine.v === old.version,
+    const REBUILT = '저장된 계획을 재분배 로그에서 다시 만들었습니다.';
+    const KEEP_UNDO = '되돌리기 기록은 이어지지 않습니다.';
+    let b = await bootWith(old.same.rec);
+    let s = await seen(b.p);
+    ok(s.log === old.same.want && s.notice === `${REBUILT} ${KEEP_UNDO}` && s.rec && s.rec.engine && s.rec.engine.v === old.same.version,
       `an autosave from an older engine is rebuilt from its log, says so, and is saved again as engine '${s.rec && s.rec.engine && s.rec.engine.v}' ("${s.notice}")`);
-    await ctx4.close();
+    await b.c.close();
+    const lostWords = `타입 이름을 알아보지 못해 첫 타입(${old.renamed.first})으로 읽었습니다.`;
+    b = await bootWith(old.renamed.rec);
+    s = await seen(b.p);
+    const keptRec = !!s.rec && s.rec.log === old.renamed.rec.log && s.rec.engine && s.rec.engine.v === '1';
+    await b.p.reload();
+    await b.p.waitForTimeout(600);
+    const again = await seen(b.p);
+    await b.p.evaluate(() => document.activeElement && document.activeElement.blur());
+    await b.p.keyboard.press('KeyL');
+    await b.p.waitForTimeout(500);
+    const changed = await seen(b.p);
+    ok(s.log === old.renamed.want && s.notice === `${REBUILT} ${lostWords} ${KEEP_UNDO}` && keptRec && again.notice === s.notice
+      && !!changed.rec && changed.rec.engine && changed.rec.engine.v === old.same.version && changed.rec.log === changed.log,
+      `an older autosave naming a renamed type (루시안/베기) opens as the first type, says so ("${s.notice}"), and the old record stays until the plan changes`);
+    await b.c.close();
+    b = await bootWith(null, base + 'index.html' + hashOf({ v: 1, log: old.renamed.rec.log.split('\r').join('\n'), b: old.renamed.rec.b, x: old.renamed.rec.x }));
+    s = await seen(b.p);
+    ok(s.log === old.renamed.want && s.notice === `링크의 계획을 열었습니다. ${lostWords}`, `a link naming a renamed type opens as the first type and says so ("${s.notice}")`);
+    await b.c.close();
+
+    // ---- 상한이 285이던 판에서 스탯 편집으로 만든 계획(그 판의 재분배 로그 모양: Status 줄의 LV 최고 레벨+15, STAB 상한+25, DEX 상한+15,
+    //      편집 레벨의 투자, 그 뒤 최고 레벨+30 까지): 엔진이 상한으로 읽는다(LV 와 스탯이 상한). 공유 링크는 새 브라우저에서 묻지 않고 열어
+    //      그렇다고 알리고, 앞 판의 자동 저장은 로그에서 다시 만들어 알린 뒤 지금 판으로 곧 다시 저장한다 ----
+    const capped = await page.evaluate(() => {
+      const K = window.Oresim.CONST;
+      const lv = K.MAX_LEVEL + 15, end = K.MAX_LEVEL + 30;
+      const status = [lv, 10, 50, 0, 0, 0, K.MAX_STATUS[0] + 25, 120, 10, 60, 30, K.MAX_STATUS[5] + 15, 40, 240, 55, 900, 0, 300, 240, 55, 900, 0, 240, 55, 900, 0]
+        .concat(Array.from({ length: 50 }, (_, x) => (x === 10 ? 1 : 0)), [50, 1]);
+      const log = [`Status       : ${status.join(', ')}`, `LV ${lv}       : STAB * 3`, 'Bonus        : 75%', `LV ${lv + 1}       : DEX * 15, STAB * 2`, `LV ${lv + 2} - ${end} : `,
+        '루시안/물리복합 Bonus: 11 / 15 Point: 181', `LV:${end} STAB ${K.MAX_STATUS[0] + 30} HACK 135 INT 10 DEF 71 MR 30 DEX ${K.MAX_STATUS[5] + 30} AGI 40`].join('\r');
+      const W = window.Oresim.createEngine();                           // 받는 쪽이 만들어야 할 계획(링크: 로그, 보너스, 주력 계열)
+      const r = W.importLog(log); W.setBonus(75); W.setXien(10);
+      const engine = JSON.parse(JSON.stringify(window.Oresim.createEngine().serialize()));
+      engine.v = '1';                                                    // 앞 판의 엔진 상태(되살리지 못한다)
+      return { log, items: status.length, capped: r.capped, want: W.exportLog(), maxLv: K.MAX_LEVEL, caps: K.MAX_STATUS.slice(0, 7), version: window.Oresim.ENGINE_VERSION,
+        rec: { v: 1, engine, log, b: 75, x: 10, savedAt: '2026-10-31T00:00:00.000Z' } };
+    });
+    const capWords = `LV나 스탯이 상한(${capped.maxLv})을 넘어 상한에 맞춰 읽었습니다.`;
+    const inCaps = (p) => p.evaluate(([maxLv, caps]) => { const v = window.OresimUI.engine().view(); return { lv: v.lv, ok: v.lv === maxLv && v.stats.every((st, i) => st.value <= caps[i]), stats: v.stats.map((st) => st.value).join(',') }; }, [capped.maxLv, capped.caps]);
+    b = await bootWith(null, base + 'index.html' + hashOf({ v: 1, log: capped.log.split('\r').join('\n'), b: 75, x: 10 }));
+    s = await seen(b.p);
+    let at = await inCaps(b.p);
+    const quiet = await b.p.evaluate(() => ({ asked: document.querySelector('#confirm').open, hash: location.hash }));
+    ok(capped.items === 78 && capped.capped === true && s.log === capped.want && at.ok && !quiet.asked && quiet.hash === '' && s.notice === `링크의 계획을 열었습니다. ${capWords}`,
+      `an old link of a stat-edited plan above the cap opens without asking, at the cap (LV ${at.lv}, stats ${at.stats}), and says so ("${s.notice}")`);
+    await b.c.close();
+    b = await bootWith(capped.rec);
+    s = await seen(b.p);
+    at = await inCaps(b.p);
+    const savedLv = s.rec && typeof s.rec.log === 'string' ? (s.rec.log.match(/^Status\s*:\s*(\d+),/) || [])[1] : null;
+    ok(s.log === capped.want && at.ok && s.notice === `${REBUILT} ${capWords} ${KEEP_UNDO}` && !!s.rec && !!s.rec.engine && s.rec.engine.v === capped.version && s.rec.log === s.log && savedLv === String(capped.maxLv),
+      `an older autosave above the cap is rebuilt at the cap (LV ${at.lv}), says so ("${s.notice}"), and is saved again as engine '${s.rec && s.rec.engine && s.rec.engine.v}' with Status LV ${savedLv}`);
+    await b.c.close();
+
+    // ---- 1440×900: LV 범위 줄이 있는 계획에서도 페이지는 화면 높이 그대로다(로그 표·가이드 안 화면 낭독기용 글이 그 칸을 기준으로 자리 잡는다) ----
+    b = await bootWith(null);
+    await b.p.evaluate(() => document.activeElement && document.activeElement.blur());
+    for (let i = 0; i < 30; i++) { await b.p.keyboard.press('KeyL'); await b.p.keyboard.press('KeyS'); }
+    for (let i = 0; i < 20; i++) { await b.p.keyboard.press('KeyL'); await b.p.keyboard.press('KeyX'); await b.p.keyboard.press('KeyH'); }
+    await b.p.waitForTimeout(300);
+    // ranges: 그 패널에 그린 LV 범위 줄(화면 낭독기용 '부터' 가 든 줄)의 수
+    const height = (panel) => b.p.evaluate((sel) => ({ doc: document.documentElement.scrollHeight, inner: innerHeight, ranges: document.querySelectorAll(`${sel} tr.lv-row .lv-dash`).length }), panel);
+    const inLog = await height('#log-table');
+    await b.p.click('#tab-guide');
+    await b.p.waitForFunction(() => { const g = document.querySelector('#guide'); return !g.dataset.stale && !!g.dataset.src; });
+    await b.p.waitForTimeout(200);
+    const inGuide = await height('#guide');
+    ok(inLog.ranges > 0 && inGuide.ranges > 0 && inLog.doc === 900 && inLog.inner === 900 && inGuide.doc === 900,
+      `1440×900 with LV range rows (log ${inLog.ranges}, guide ${inGuide.ranges}): the page stays ${inLog.doc} px in the log tab and ${inGuide.doc} px in the guide tab`);
+    await b.c.close();
     await ctx.close();
     ok(logs.length === 0, 'console clean' + (logs.length ? `: ${logs.join(' | ')}` : ''));
   } catch (e) {

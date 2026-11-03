@@ -76,6 +76,7 @@
   // 스탯을 읽는 소리(스탭, 핵, 인트, 데프, 엠알, 덱스, 아지) 뒤의 은/는
   const TOPIC = { STAB: '은', HACK: '은', INT: '는', DEF: '는', MR: '은', DEX: '는', AGI: '는' };
   const planName = (a, b) => h('span', { class: 'nw' }, `${a}/${b}`);   // "캐릭터/타입"은 줄을 바꾸지 않는다
+  const charType = () => h('span', { class: 'nw' }, '캐릭터/타입');      // 안내 글의 낱말 '캐릭터/타입'도 '/' 뒤에서 줄을 바꾸지 않는다
 
   // 브라우저 저장소: 막혀 있어도(사생활 보호 창 등) 화면은 그대로 동작해야 한다
   const store = {
@@ -943,7 +944,7 @@
     if (!r.ok) return null;
     if (typeof data.b === 'number') C.setBonus(data.b);
     if (typeof data.x === 'number') C.setXien(data.x);           // 지금 고를 수 없는 계열이면 그대로 둔다
-    return { engine: C, r: { ok: true, sound: null }, stale: !!r.error && probeStale(C) };
+    return { engine: C, r: { ok: true, sound: null }, stale: !!r.error && probeStale(C), typeLost: typeLost(r), capped: capped(r) };
   }
   // 후보 엔진으로 바꾼다(읽어 본 결과 그대로 돌려준다). 후보의 불러오기가 중간에 멈췄으면 비용 단계가 옛 값인지 묻는다
   function adopt(cand) {
@@ -960,6 +961,17 @@
   const hasWork = (v) => v.actions > 0 || v.canRedo || edited(v);
   // 로그 불러오기가 지금 계획을 그대로 두었다: 캐릭터/타입 줄도 LV 줄도 없어 처음부터 다시 읽지 않고 설정 줄(Bonus, Xien)만 반영했다
   const keptPlan = (r) => !!(r && r.ok && !r.footer && !r.restarted);
+  // 캐릭터/타입 줄의 캐릭터는 알아봤지만 타입은 알아보지 못해 그 캐릭터의 첫 타입으로 읽었다(2026-11 에 이름이 바뀐 타입을 적은
+  // 옛 로그·링크·자동 저장 등. 원본 logLoad 처럼 타입은 이름의 앞부분으로 맞춘다). 붙여넣은 로그, 공유 링크, 자동 저장이 같은 말로 알린다
+  const typeLost = (r) => !!(r && r.footer && !r.typeFound);
+  const firstTypeWords = (typeName, done) => `타입 이름을 알아보지 못해 첫 타입${WJ}(${typeName})${WJ}으로 ${done ? '읽었습니다' : '읽습니다'}.`;
+  // 붙여넣은 로그만: 그 캐릭터/타입 줄을 고쳐 다시 불러오는 법(승인된 문구. 보기는 지금 있는 캐릭터/타입 이름이다)
+  const fixTypeWords = () => ['다른 타입이었다면 로그 끝의 ', charType(), ` 줄을 지금 이름${WJ}(예: `, planName('루시안', '베기형'), `)${WJ}으로 고쳐 다시 불러오세요.`];
+  // 글에 지금 상한(최고 레벨, 스탯 상한)을 넘는 값이 있어 엔진이 상한에 맞춰 읽었다(importLog 의 capped. 상한이 285이던 판에서 만든
+  // 계획: 최고 레벨을 넘는 LV 줄, 스탯 편집으로 LV·스탯을 상한 넘게 시작한 Status 줄, LV 255 까지 스탯이 상한을 넘은 LV: 요약 줄).
+  // 읽기가 중간에 멈췄으면(error) 멈춘 것만 알리고 이 말은 하지 않는다. 붙여넣은 로그, 공유 링크, 자동 저장이 같은 말로 알린다
+  const capped = (r) => !!(r && r.capped && !r.error);
+  const capWords = (done) => `LV나 스탯이 상한${WJ}(${fmt(CONST.MAX_LEVEL)})${WJ}을 넘어 상한에 맞춰 ${done ? '읽었습니다' : '읽습니다'}.`;
 
   // ==========================================================================
   // 디스패처: 모든 조작이 여기로 온다
@@ -1428,11 +1440,13 @@
   // 링크를 읽지 못한 까닭: 'nodeflate' 압축을 풀 수 없는 브라우저, 'big' 너무 큼, 그 밖(잘림, 손상, 다른 형식)
   class LinkError extends Error { constructor(kind) { super(kind); this.kind = kind; } }
   // 링크의 로그가 이 시뮬레이터가 쓴 모양인가: 엔진이 읽는 Status 줄(스탯 편집으로 시작한 계획)은 하나뿐이고, 그 LV 와 일곱 스탯이
-  // 스탯 편집 창의 범위(1~255) 안이다. 링크는 언제나 이 시뮬레이터의 재분배 로그(exportLog)를 담으므로 그렇다. 손으로 만든 글은
-  // Status 줄을 여러 번 두거나 음수 LV·스탯을 넣어 엔진이 작업 한도까지 몇 초씩 일하게 할 수 있다: 그런 링크는 읽지 않는다(붙여넣은
-  // 로그는 원본처럼 그대로 읽는다). 줄을 가르는 법은 엔진의 것(맨 앞 공백, 전각 콜론·쉼표·하이픈, 값 78개 또는 46개)을 따른다
+  // 1 이상의 정수다. 링크는 언제나 이 시뮬레이터의 재분배 로그(exportLog)를 담으므로 그렇다. 손으로 만든 글은 Status 줄을 여러 번
+  // 두거나 0·음수 LV·스탯을 넣어 엔진이 작업 한도까지 몇 초씩 일하게 할 수 있다: 그런 링크는 읽지 않는다(붙여넣은 로그는 원본처럼
+  // 그대로 읽는다). 상한(최고 레벨, 스탯 상한)을 넘는 값은 받는다: 상한이 285이던 판에서 스탯 편집으로 만든 계획의 링크이고, 엔진이
+  // 그 값을 상한으로 읽으므로(importLog 의 capped. 연 뒤에 알린다) 오래 일하지 않는다.
+  // 줄을 가르는 법은 엔진의 것(맨 앞 공백, 전각 콜론·쉼표·하이픈, 값 78개 또는 46개)을 따른다
   function linkLogOk(log) {
-    const inRange = (x, max) => /^\d+$/.test(x) && +x >= 1 && +x <= max;
+    const positive = (x) => /^\d+$/.test(x) && +x >= 1;
     let n = 0;
     for (const raw of lines(log)) {
       const m = raw.replace(/\uFF1A/g, ':').replace(/\uFF0C/g, ',').replace(/\uFF0D/g, '-').match(/^ *Status(?: [^:]*)?:([^:]*)/);
@@ -1440,7 +1454,7 @@
       const a = m[1].replace(/ /g, '').split(',');
       if (a.length !== 78 && a.length !== 46) continue;                 // 엔진도 Status 줄로 읽지 않는다
       if (++n > 1) return false;
-      if (!inRange(a[0], CONST.MAX_LEVEL) || !STAT_I.every((i) => inRange(a[6 + i], CONST.MAX_STATUS[i]))) return false;
+      if (!positive(a[0]) || !STAT_I.every((i) => positive(a[6 + i]))) return false;
     }
     return true;
   }
@@ -1608,27 +1622,32 @@
     const go = () => loaded(dispatch('importLog', text, cand), cv, text, before);
     // 지울 계획이 없거나, 설정 줄(Bonus, Xien)만 읽어 지금 계획을 그대로 두는 글이면 묻지 않는다
     if (!hasWork(model.view) || keptPlan(r)) return go();
-    const how = r.restarted ? ` 이 로그에는 캐릭터/타입 줄이 없어 지금 고른 캐릭터/타입으로 읽습니다.`
-      : r.footer && !r.typeFound ? ` 타입 이름을 알아보지 못해 첫 타입${WJ}(${cv.typeName})${WJ}으로 읽습니다.` : '';
-    ask({ title: '로그를 불러올까요?', desc: [`지금 계획${WJ}(`, ...planNow(), `)${WJ}은 지워지고 붙여넣은 로그${WJ}(`, planName(cv.charName, cv.typeName), `, LV${NB}${fmt(cv.lv)})${WJ}로 다시 만듭니다.${how} ${keepIt}`], go: '불러오기', onGo: go, from });
+    const how = r.restarted ? [' 이 로그에는 ', charType(), ' 줄이 없어 지금 고른 ', charType(), '으로 읽습니다.']
+      : typeLost(r) ? [` ${firstTypeWords(cv.typeName)}`] : [];
+    const over = capped(r) ? ` ${capWords(false)}` : '';
+    ask({ title: '로그를 불러올까요?', desc: [`지금 계획${WJ}(`, ...planNow(), `)${WJ}은 지워지고 붙여넣은 로그${WJ}(`, planName(cv.charName, cv.typeName), `, LV${NB}${fmt(cv.lv)})${WJ}로 다시 만듭니다.`, ...how, `${over} ${keepIt}`], go: '불러오기', onGo: go, from });
   }
-  // 불러온 뒤: 무엇으로 읽었는지 말한다. 깨끗이 읽었으면(캐릭터/타입 줄, 오류 없음) 칸을 비워 접고, 다른 캐릭터를 골라
-  // 다시 불러올 수 있게 처음부터 다시 읽은 경우, 설정 줄만 읽은 경우, 오류가 난 경우에는 글을 남긴다. 초점은 로그 불러오기에
+  // 불러온 뒤: 무엇으로 읽었는지 말한다. 깨끗이 읽었으면(캐릭터/타입 줄의 캐릭터와 타입, 오류 없음) 칸을 비워 접고, 다른 캐릭터를 골라
+  // 다시 불러올 수 있게 처음부터 다시 읽은 경우, 설정 줄만 읽은 경우, 오류가 난 경우에는 글을 남긴다. 타입 이름을 알아보지 못해
+  // 첫 타입으로 읽은 경우(typeLost)에도 남긴다: 다른 타입을 골라도 그 줄이 첫 타입으로 되돌리므로, 그 줄을 고쳐 다시 불러올 수 있게
+  // (고치는 법도 말한다). 상한을 넘는 값을 상한에 맞춰 읽었으면(capped) 그것도 말한다(설정 줄만 읽은 경우와 오류가 난 경우는 빼고).
+  // 그것만이면 깨끗이 읽은 것이라 칸을 비운다(상한에 맞춘 계획이 지금 계획이다). 초점은 로그 불러오기에
   function loaded(r, cv, text, before) {
     if (!r || !r.ok) return;
     const who = [planName(cv.charName, cv.typeName), `, LV${NB}${fmt(cv.lv)}`];
+    const over = capped(r) ? ` ${capWords(true)}` : '';
     if (r.error) say('error', '로그를 끝까지 읽지 못했습니다. 읽은 데까지만 반영했습니다. 형식이 맞는지 확인하세요.');
     else if (keptPlan(r)) {
       // 계획은 그대로이고 설정만 바뀌었다: 무엇이 바뀌었는지 말한다
       const got = [];
       if (before && cv.bonus.rate !== before.bonus.rate) got.push(`보너스 ${cv.bonus.rate}%`);
       if (before && cv.xien.selected !== before.xien.selected) { const l = cv.xien.lines.find((x) => x.x === cv.xien.selected); got.push(`주력 계열 ${l ? l.name : cv.xien.selected}`); }
-      say('info', `캐릭터/타입 줄과 LV 줄이 없어 지금 계획에 설정만 반영했습니다${got.length ? `: ${got.join(', ')}` : ''}.`);
+      say('info', [charType(), ` 줄과 LV 줄이 없어 지금 계획에 설정만 반영했습니다${got.length ? `: ${got.join(', ')}` : ''}.`]);
     }
-    else if (r.restarted) say('info', [`캐릭터/타입 줄이 없어 지금 고른 `, planName(cv.charName, cv.typeName), `${ro(cv.typeName)} 처음부터 읽었습니다.`, looksJapanese(text) ? ` ${JA_AFTER}` : '']);
-    else if (r.footer && !r.typeFound) say('info', ['로그를 불러왔습니다: ', ...who, `. 타입 이름을 알아보지 못해 첫 타입${WJ}(${cv.typeName})${WJ}으로 읽었습니다.`]);
-    else say('ok', ['로그를 불러왔습니다: ', ...who, '.']);
-    if (r.footer && !r.error) {
+    else if (r.restarted) say('info', [charType(), ' 줄이 없어 지금 고른 ', planName(cv.charName, cv.typeName), `${ro(cv.typeName)} 처음부터 읽었습니다.${over}`, looksJapanese(text) ? ` ${JA_AFTER}` : '']);
+    else if (typeLost(r)) say('info', ['로그를 불러왔습니다: ', ...who, `. ${firstTypeWords(cv.typeName, true)}${over} `, ...fixTypeWords()]);
+    else say(over ? 'info' : 'ok', ['로그를 불러왔습니다: ', ...who, `.${over}`]);
+    if (r.footer && !r.error && !typeLost(r)) {
       if (document.activeElement === pasteText) loadBtn.focus();       // 칸이 접혀도 초점이 <body>로 떨어지지 않게
       pasteText.value = '';
       foldLoader();
@@ -1966,11 +1985,21 @@
       same = cand.engine.exportLog() === E.exportLog() && cv.bonus.rate === v.bonus.rate && cv.xien.selected === v.xien.selected;
     } catch (err) { engineFailed(err); done(); return; }
     if (same) { dropLinkAsk(); done(); return; }                          // 같은 계획
-    const open = () => { done(); dispatch('openShared', data, cand); announce('링크의 계획을 열었습니다.'); };
+    // 링크의 타입 이름을 알아보지 못해 첫 타입으로 읽었거나(이름이 바뀌기 전의 판에서 만든 링크 등), 상한을 넘는 값을 상한에 맞춰
+    // 읽었으면(상한이 285이던 판의 링크) 묻는 글과, 연 뒤의 알림 한 줄로 알린다. 그 밖에는 연 것을 화면 낭독기로만 알린다
+    const lost = !!cand.typeLost;
+    const over = !!cand.capped;
+    const readAs = (past) => `${lost ? ` ${firstTypeWords(cv.typeName, past)}` : ''}${over ? ` ${capWords(past)}` : ''}`;
+    const open = () => {
+      done();
+      const r = dispatch('openShared', data, cand);
+      if ((lost || over) && r.ok) note('info', `링크의 계획을 열었습니다.${readAs(true)}`);
+      else announce('링크의 계획을 열었습니다.');
+    };
     if (!hasWork(v)) { dropLinkAsk(); open(); return; }
     ask({
       title: '링크의 계획을 열까요?',
-      desc: [`링크의 계획${WJ}(`, planName(cv.charName, cv.typeName), `, LV${NB}${fmt(cv.lv)}`, `)${WJ}을 열면 이 브라우저에 저장된 계획${WJ}(`, ...planNow(), `)${WJ}은 지워집니다. 저장된 계획도 남기려면 '저장된 계획 유지'를 누르고 먼저 그 계획의 링크를 복사하세요.`],
+      desc: [`링크의 계획${WJ}(`, planName(cv.charName, cv.typeName), `, LV${NB}${fmt(cv.lv)}`, `)${WJ}을 열면 이 브라우저에 저장된 계획${WJ}(`, ...planNow(), `)${WJ}은 지워집니다.${readAs(false)} 저장된 계획도 남기려면 '저장된 계획 유지'를 누르고 먼저 그 계획의 링크를 복사하세요.`],
       go: '링크 계획 열기', cancel: '저장된 계획 유지',
       onGo: open,
       onCancel: () => { done(); dispatch('keepSaved'); },
@@ -1996,11 +2025,12 @@
     if (typeof saved.log !== 'string') return null;
     try {
       const e = Oresim.createEngine();
-      if (!e.importLog(saved.log).ok) return null;
+      const r = e.importLog(saved.log);
+      if (!r.ok) return null;
       if (typeof saved.b === 'number') e.setBonus(saved.b);
       if (typeof saved.x === 'number') e.setXien(saved.x);
       e.view();
-      return { engine: e, rebuilt: true };
+      return { engine: e, rebuilt: true, typeLost: typeLost(r), capped: capped(r) };
     } catch (_) { return null; }
   }
   function boot() {
@@ -2024,7 +2054,15 @@
     moveInk(false);
     paintSaved();
     if (saved && !drawn) note('info', '저장된 계획을 읽지 못해 새 계획으로 시작합니다.');
-    else if (got && got.rebuilt) { note('info', '저장된 계획을 재분배 로그에서 다시 만들었습니다. 되돌리기 기록은 이어지지 않습니다.'); scheduleSave(); }
+    else if (got && got.rebuilt) {
+      // 저장된 로그의 타입 이름을 알아보지 못해 첫 타입으로 읽었으면(이름이 바뀌기 전의 판에서 저장한 계획) 그것도 말하고, 저장된 기록은
+      // 계획을 바꿀 때까지 그대로 둔다(그때까지는 새로 고칠 때마다 다시 알린다). 상한을 넘는 값을 상한에 맞춰 읽었으면(상한이 285이던
+      // 판에서 저장한 계획) 그것도 말한다. 그 밖에는(상한에 맞춘 것만이면 그 계획도) 다시 만든 계획을 곧 저장한다
+      const lost = got.typeLost ? ` ${firstTypeWords(model.view.typeName, true)}` : '';
+      const over = got.capped ? ` ${capWords(true)}` : '';
+      note('info', `저장된 계획을 재분배 로그에서 다시 만들었습니다.${lost}${over} 되돌리기 기록은 이어지지 않습니다.`);
+      if (!got.typeLost) scheduleSave();
+    }
     // 새로 고칠 때 브라우저는 보던 내용을 제자리에 두려고 스크롤을 되살린다. 시작할 때 알림이 위에 끼면 그 알림이
     // 화면 위로 밀려나므로, 그때만 되살리지 않는다
     if (!noticeEl.hidden && 'scrollRestoration' in history) history.scrollRestoration = 'manual';

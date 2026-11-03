@@ -27,7 +27,8 @@
   'use strict';
 
   var Oresim = globalThis.Oresim = globalThis.Oresim || {};
-  var ENGINE_VERSION = '2';
+  // 저장 형식 serialize() 의 판. '3'(2026-11): 로그 읽기가 상한을 넘는 Status 줄의 LV·스탯을 상한으로 읽게 되어(동작이 바뀌었다) '2' 에서 올렸다
+  var ENGINE_VERSION = '3';
 
   // ---- 반복 안전장치 ----
   // 원본에는 Flash 의 스크립트 시간 제한(Flex 기본 60초, Error #1502)밖에 없다. 그 시점은 PC 속도에 따라 달라 흉내 낼 수 없으므로,
@@ -965,7 +966,8 @@
       // 원본: for (i = 0; i < l + 2; i++) stLog[i] = tmpStLog[i];
       // 0 ~ l+1 칸을 tmpStLog 와 같게 만드는데, 값이 있는 칸만 옮기고 tmpStLog 에 값이 없는 칸은 stLog 에서도 지운다.
       // 원본은 그 칸에 undefined 를 넣지만 원본 논리는 빈 칸과 undefined 칸을 구별하지 않는다(in·length·키 나열을 쓰지 않는다).
-      // Status 줄로 LV 가 아주 커진 뒤에도 되돌리기가 레벨 수만큼 돌지 않게 하려는 것이다.
+      // LV 가 아주 큰 상태에서도 되돌리기가 레벨 수만큼 돌지 않게 하려는 것이다(2026-11 부터 Status 줄의 LV 는 상한으로 읽으므로
+      // 로그로는 그렇게 되지 않는다. 손으로 고친 저장 상태 같은 것에 대한 대비로 둔다).
       var n = l + 2;
       if (n > 0) {
         eachIndexKey(stLog, n, function (i) { if (tmpStLog[i] === undefined) delete stLog[i]; });
@@ -1316,6 +1318,62 @@
       logText = asText(logtxt);
     }
 
+    // 원본에 없는 것(importLog 의 capped): 읽을 글에 지금 상한을 넘는 값이 있는가. logLoad 가 나눈 줄(lines)을 logLoad 와 같은
+    // 방법(split, AS3 parseInt)으로 본다. 다음 줄이 하나라도 있으면 그렇다.
+    //  - LV 줄: 시작 레벨이나 끝 레벨이 MAX_LEVEL 보다 크다
+    //  - 항목 수가 맞는(78/46) Status 줄: LV(0번)가 MAX_LEVEL 보다, 또는 일곱 스탯(6~12번) 가운데 하나가 MAX_STATUS 보다 크다
+    //  - LV: 요약 줄(logOut 이 끝에 쓰는 "LV:170 STAB 285 HACK 4 …"): 줄 머리(첫 ':' 앞)가 "LV" 하나이고, ':' 뒤를 공백으로 나눈 낱말의
+    //    1·3·…·13번 칸이 SUMMARY_STATS 이다. 0번 칸(LV)이 MAX_LEVEL 보다, 또는 이름 바로 뒤 칸(2·4·…·14번, 스탯)이 MAX_STATUS 보다 크다.
+    //    상한이 285이던 판에서 LV 256 전에 스탯이 255를 넘은 계획(몰빵 등)은 LV 줄도 Status 줄도 상한 안이라 이 줄로만 알 수 있다
+    //    (읽기는 이 줄을 쓰지 않는다. 그 스탯은 다시 찍을 때 상한에서 멈춘다)
+    // 글의 성질이라 읽기가 중간에 멈춰도(error) 같은 값이다. 상태는 바꾸지 않는다
+    var SUMMARY_STATS = ['STAB', 'HACK', 'INT', 'DEF', 'MR', 'DEX', 'AGI'];   // logOut 이 LV: 요약 줄에 쓰는 스탯 이름(그 순서)
+    function overCap(lines) {
+      var i, k, token, tag, a, w, named;
+      for (i = 0; i < lines.length; i++) {
+        token = String(lines[i]).split(':');
+        tag = coerceS(token[0]);
+        if (tag.split(' ')[0] == 'LV') {
+          if (parseInt(coerceS(tag.split(' ')[1])) > MAX_LEVEL || parseInt(coerceS(tag.split(' ')[3])) > MAX_LEVEL) {
+            return true;
+          }
+        }
+        if (tag == 'LV') {
+          w = String(token[1]).split(' ');
+          named = true;
+          for (k = 0; k < 7; k++) {
+            if (w[1 + 2 * k] != SUMMARY_STATS[k]) {
+              named = false;
+            }
+          }
+          if (named) {
+            if (parseInt(w[0]) > MAX_LEVEL) {
+              return true;
+            }
+            for (k = 0; k < 7; k++) {
+              if (parseInt(w[2 + 2 * k]) > MAX_STATUS[k]) {
+                return true;
+              }
+            }
+          }
+        }
+        if (tag.split(' ')[0] == 'Status') {
+          a = replaceText(String(token[1]), ' ', '').split(',');
+          if (a.length == 78 || a.length == 46) {
+            if (parseInt(a[0]) > MAX_LEVEL) {
+              return true;
+            }
+            for (k = 0; k < 7; k++) {
+              if (parseInt(a[6 + k]) > MAX_STATUS[k]) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+      return false;
+    }
+
     function logLoad(flags) {
       var logorg = replaceText(replaceText(replaceText(logText, '\uFF0C', ','), '\uFF1A', ':'), '\uFF0D', '-');
       var logtxt = [];
@@ -1343,6 +1401,8 @@
           i++;
         }
       }
+      // 원본에 없는 것: 상한을 넘는 값이 있는 글인가(importLog 의 capped). 읽기 전에 글만 본다
+      if (flags) flags.capped = overCap(logtxt);
 
       // 푸터("캐릭터/타입 Bonus: …")로 캐릭터와 타입을 고른다
       len = logtxt.length;
@@ -1535,6 +1595,16 @@
             }
             if (a.length == 46) {
               la[76] = la[2];
+            }
+            // 지금 상한을 넘는 LV와 일곱 스탯은 상한으로 읽는다. 상한이 285이던 판에서 스탯 편집 창으로 만든 로그도
+            // 이 판(2026-11부터 상한 255)의 계획이 된다. 상한이 바뀐 이 여덟 칸만 보고, 상한 이하의 값과 수가 아닌 값은 그대로다
+            if (la[0] > MAX_LEVEL) {
+              la[0] = MAX_LEVEL;
+            }
+            for (m = 0; m < 7; m++) {
+              if (la[6 + m] > MAX_STATUS[m]) {
+                la[6 + m] = MAX_STATUS[m];
+              }
             }
             la[77] = 1;
             stLog[la[0] - 1] = 's';
@@ -2209,16 +2279,22 @@
         return logText;
       },
       // 로그 읽기 (붙여넣기 → 로그 불러오기)
-      // { ok, sound: null, footer, typeFound, restarted }
+      // { ok, sound: null, footer, typeFound, restarted, capped }
       //   ok        원본이 무언가 읽었다(캐릭터/타입 줄을 알아봤거나, 처음부터 다시 읽었거나, 상태가 바뀌었다)
       //   footer    캐릭터/타입 줄("루시안/물리복합 Bonus: …")에서 캐릭터를 알아봐 그 캐릭터로 처음부터 읽었다
       //   typeFound footer 이고 타입까지 알아봤다(false 면 그 캐릭터의 첫 타입)
       //   restarted 캐릭터/타입 줄이 없어서 지금 고른 캐릭터/타입의 처음 상태부터 읽었다(일본어판 로그, 끝 두 줄을 빠뜨린 로그 등)
+      //   capped    글에 지금 상한을 넘는 값이 있었다: 시작이나 끝 레벨이 최고 레벨(MAX_LEVEL)보다 큰 LV 줄, LV 나 일곱 스탯
+      //             가운데 하나가 상한(MAX_LEVEL, MAX_STATUS)보다 큰 Status 줄(항목 수가 맞는 것), 또는 LV 나 스탯이 상한보다 큰
+      //             LV: 요약 줄("LV:170 STAB 285 HACK 4 …" 모양. 자세한 것은 overCap). 상한이 285이던 판의 계획이 그렇다.
+      //             Status 줄의 그 값은 상한으로 읽는다. LV 줄에서 최고 레벨을 넘는 레벨은 레벨업 없이(최고 레벨에서 거절된다) 그 레벨의
+      //             투자만 포인트가 있는 동안 최고 레벨에서 한다. 요약 줄은 읽지 않으므로, 상한을 넘던 스탯은 다시 찍을 때 상한에서 멈춘다.
+      //             글만 보고 정하므로 읽기가 중간에 멈춰도(error) 같은 값이다
       importLog: function (text) {
         var s = text === undefined || text === null ? '' : String(text);
         s = s.split('\r\n').join('\r').split('\n').join('\r');   // Flash 텍스트 상자는 줄바꿈을 \r 로 바꾼다
         var before = fingerprint();
-        var flags = { charFound: false, typeFound: false, reset: false };
+        var flags = { charFound: false, typeFound: false, reset: false, capped: false };
         var error = act(function () {
           logText = asText(s);
           logLoadPress(flags);
@@ -2227,6 +2303,7 @@
         r.footer = flags.charFound;
         r.typeFound = flags.typeFound;
         r.restarted = flags.reset;
+        r.capped = !!flags.capped;
         return done(r, error);
       },
       // 육성 가이드 (recipe 의 글). 조작이 하나도 없으면 원본도 출력하지 않으므로 ''. 조회만 한다(로그 상자는 그대로)
