@@ -17,7 +17,7 @@
  *   그 밖에 반복 안전장치(붙여 넣은 로그의 거대한 수가 정확히 빨리 끝나는지, 끝이 없는 입력은 멈추는지),
  *   view()/serialize() 결과를 고쳐도 엔진이 그대로인지, 잘못된 저장 상태 거부,
  *   상한이 높던 판(2026-11 전에는 285)의 로그: 상한을 넘는 Status 값을 상한으로 읽고(capped), 다시 내보낸 로그는 capped 가 아니다.
- * RT/UNDO/P/EDIT/XI 는 원본(tests/harness.js)이 지키던 성질이다(웹 엔진이 원본과 같다는 것은 engine-diff.js 가 본다).
+ * RT/UNDO/P/EDIT/XI 는 원래 Flash 판(AS3 원본)이 지키던 성질이다(엔진이 원본과 같다는 것은 tests/engine-golden.js 의 기록이 본다).
  * 사용법: node tests/engine-invariants.js [runsPerFeatureSet=40] [seed=777]
  */
 'use strict';
@@ -30,14 +30,8 @@ const ROOT = path.join(__dirname, '..');
 const RUNS = +(process.argv[2] || 40);
 let seed = +(process.argv[3] || 777);
 
-function loadOresim() {
-  const ctx = { console };
-  vm.createContext(ctx);
-  const files = [path.join(ROOT, 'web/js/const.js'), process.env.ORESIM_ENGINE || path.join(ROOT, 'web/js/engine.js')];
-  for (const f of files) vm.runInContext(fs.readFileSync(f, 'utf8'), ctx, { filename: f });
-  return ctx.Oresim;
-}
-const Oresim = loadOresim();
+// 브라우저처럼 const.js → engine.js (ORESIM_ENGINE=경로 를 주면 그 엔진 파일)
+const Oresim = require('./engine-host').loadOresim();
 const C = Oresim.CONST;
 const MAX_LV = C.MAX_LEVEL;   // 최고 레벨과 스탯 상한은 표에서 읽는다
 
@@ -77,7 +71,7 @@ function core(E) {
     ranges: ['s7mi', 's7mx', 's8mi', 's8mx', 's9mi', 's9mx'].map(n),
     // _bonusPoints 는 보너스 100% 일 때(무조건 지급)와 레벨업이 아직 없을 때(tlvup 0: 다음 레벨업의 재계산 값 floor(rate/100) 이
     // 지금 값과 같다)는 앞으로의 결과에 영향이 없으므로 뺀다. 원본은 로그를 다시 읽으면 tmpBonusExpected 에 그때의 스테퍼 값을
-    // 넣는데(initStatus 가 Bonus 줄보다 먼저 돈다), 레벨업 없는 로그면 그 값이 그대로 남는다. engine-diff 로 원본과 같음을 확인했다.
+    // 넣는데(initStatus 가 Bonus 줄보다 먼저 돈다), 레벨업 없는 로그면 그 값이 그대로 남는다. 원본과 같음은 engine-diff(지금의 engine-golden 기록)로 확인했다.
     bonus: [n('tbonus'), n('tlvup'), d.g.tmpBonusExpected === 100 || n('tlvup') === 0 ? '-' : d.g._bonusPoints],
     xi: d.g._xi.join(','), needXien: d.g._needXien.join(','),
     char: d.char.index, style: d.style.index,
@@ -550,11 +544,9 @@ special('capped.afterError', () => {
   if (E.view().lv !== 1) return `멈춘 뒤의 LV 줄까지 읽었다: LV ${E.view().lv}`;
   return null;
 });
-// (e) 수가 아니거나 음수인 값은 상한과 상관없다: capped 가 아니고, 값을 바꾸지 않으며(전과 같다), 원본(하네스)이 읽은 것과 같다
+// (e) 수가 아니거나 음수인 값은 상한과 상관없다: capped 가 아니고, 값을 바꾸지 않는다(전과 같다. 원본과 같은 읽기인지는
+// tests/engine-golden.js 의 경계 입력 'Status 수가 아님·음수', 'Status 음수 LV·스탯' 이 본다)
 special('capped.nanNegative', () => {
-  const H = require('./harness');
-  const definedOnly = (arr) => { const o = {}; for (const k of Object.keys(arr)) if (arr[k] !== undefined) o[k] = arr[k]; return o; };
-  const norm = (st) => Object.assign({}, st, { stLog: definedOnly(st.stLog), tmpStLog: definedOnly(st.tmpStLog) });
   const P = Oresim._as3.parseInt;
   for (const [lv, stats, n, line] of [
     ['abc', [-5, 'x', 3, -999, 5, '', 7], 78, 'LV   2       : STAB'],
@@ -562,12 +554,9 @@ special('capped.nanNegative', () => {
     ['NaN', [1, -2, 3, 4, 'NaN', 6, -7], 78, null],
   ]) {
     const text = [statusOf(lv, stats, n)].concat(line ? [line] : [], [FOOT0]).join('\r');
-    const E = Oresim.createEngine(), A = H.createOracle();
-    const re = E.importLog(text), ra = A.importLog(text);
+    const E = Oresim.createEngine();
+    const re = E.importLog(text);
     if (re.capped !== false) return `capped ${re.capped}: LV ${lv}`;
-    if (!same(re, ra)) return `importLog 결과가 원본과 다르다: ${JSON.stringify(re)} / ${JSON.stringify(ra)}`;
-    if (!same(norm(E._debugState()), norm(H.rawState(A.S)))) return `읽은 상태가 원본과 다르다: LV ${lv}`;
-    if (E.exportLog() !== A.exportLog()) return `내보낸 로그가 원본과 다르다: LV ${lv}`;
     const l0 = E._debugState().log[0], want = [lv].concat(stats).map(P);
     const got = [l0[0]].concat(l0.slice(6, 13));
     if (!want.every((w, k) => Object.is(w, got[k]))) return `Status 값이 바뀌었다: ${got.join(',')} / ${want.join(',')}`;
@@ -577,9 +566,8 @@ special('capped.nanNegative', () => {
 // (f) 스탯 편집 없이 LV 256 전에 스탯이 상한을 넘은 옛 계획(상한이 285이던 판의 몰빵 등): LV 줄은 상한 안이고 상한을 넘는 값은 끝의
 // LV: 요약 줄("LV:170 STAB 285 HACK 4 …")에만 있다. capped 는 그 줄로 참이 되고, 요약 줄은 읽지 않으므로 계획은 그 줄이 없을 때와 같다
 // (그 스탯은 다시 찍을 때 상한에서 멈춘다). 요약 줄의 모양(줄 머리가 'LV' 하나, 이름이 STAB~AGI 순서)이 다르거나 값이 상한 이하이면
-// capped 가 아니다. 원본(하네스)의 capped 와도 같은지 본다. 값은 표의 상한에서 만든다
+// capped 가 아니다. 값은 표의 상한에서 만든다
 special('capped.summaryLine', () => {
-  const H = require('./harness');
   const sum = (lv, vals) => `LV:${lv} ` + STATS.map((s, i) => `${s} ${vals[i]}`).join(' ');
   const low = [9, 4, 1, 2, 1, 86, 1];
   const plan = ['LV   1       :', 'Bonus        : 50%', 'LV   2 - 155 : STAB 몰빵 128회', 'LV 156 - 170 :', `${C.CHAR_NAME[2]}/${C.STYLE_NAME[2][0]} Bonus: 0 / 0 Point: 0`];
@@ -602,8 +590,6 @@ special('capped.summaryLine', () => {
   for (const [last, want] of cases) {
     const { E, r } = read(last);
     if (r.capped !== want || r.error || !r.footer) return `"${last}": importLog ${JSON.stringify(r)} / 기대 capped ${want}`;
-    const ra = H.createOracle().importLog(plan.concat([last]).join('\r'));
-    if (ra.capped !== want) return `"${last}": 원본(하네스)의 capped ${ra.capped} / 기대 ${want}`;
     const d = diffKeys(core(base.E), core(E));
     if (d.length || E.exportLog() !== base.E.exportLog()) return `"${last}": 요약 줄이 계획을 바꿨다: ${d.slice(0, 3).join('; ')}`;
   }
@@ -620,8 +606,6 @@ special('capped.summaryLine', () => {
     const E = Oresim.createEngine();
     const r = E.importLog(text);
     if (r.capped !== true || r.error || !r.footer) return `${what}: importLog ${JSON.stringify(r)} / 기대 capped true`;
-    const ra = H.createOracle().importLog(text);
-    if (ra.capped !== true) return `${what}: 원본(하네스)의 capped ${ra.capped} / 기대 true`;
     const d = diffKeys(core(base.E), core(E));
     if (d.length || E.exportLog() !== base.E.exportLog()) return `${what}: 요약 줄이 계획을 바꿨다: ${d.slice(0, 3).join('; ')}`;
   }

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /*
- * AS3 런타임 의미 확인: 엔진(web/js/engine.js 의 Oresim._as3)과 하네스(tests/harness.js 의 C5·C10)가 흉내 내는
- * AS3 의 전역 parseInt 와 RegExp \s 가
+ * AS3 런타임 의미 확인: 엔진(public/js/engine.js 의 Oresim._as3)이 흉내 내는 AS3 의 전역 parseInt 와 RegExp \s 가
  *   1. 답을 아는 경우(avmplus 소스에서 손으로 따진 값)와 같고
- *   2. 무작위 글자열 수만 개에서 서로 같은지 본다(두 구현은 따로 옮겼다).
+ *   2. 무작위 글자열 수만 개에서 따로 옮긴 참고 구현(아래 as3ParseInt, AS3_WS)과 같은지 본다.
+ * 참고 구현은 원래 원본 하네스(tests/harness.js, 2026-11 에 Flash 판과 함께 지웠다)가 원본 AS3 를 돌릴 때 쓰던 것으로,
+ * 엔진의 것과 따로 옮겼다. 엔진은 원본의 logLoad 가 쓰는 두 곳(parseInt, Xien 줄의 /^\s+|\s+$/g)을 이 의미로 돈다.
  * 출처(avmplus/Tamarin = Flash Player 의 AVM2 를 공개한 소스):
  *   parseInt  core/Toplevel.cpp(parseInt → MathUtils::parseInt(s, radix 0, strict 아님)), core/MathUtils.cpp(skipSpaces, parseInt)
  *   \s        pcre/pcre_chartables.cpp(0~255 의 공백: \t \n \f \r 공백 U+00A0, \v 는 아님), pcre/pcre_exec.cpp(OP_WHITESPACE:
@@ -12,21 +13,109 @@
  */
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-const vm = require('vm');
-const H = require('./harness');
+const E = require('./engine-host').loadOresim()._as3;
+
+// ---- 참고 구현 ----
+// AS3 RegExp 의 \s 가 맞추는 문자(정규식 문자 집합 안에 넣는 글자 그대로: \t \n \f \r 공백 U+00A0 U+200B U+2060 U+3000 U+FEFF)
+const AS3_WS = '\\t\\n\\f\\r \\u00a0\\u200b\\u2060\\u3000\\ufeff';
+
+// AS3 의 전역 parseInt(s:String = "NaN", radix:int = 0). avmplus MathUtils::parseInt(inStr, radix, strict=false) 를 옮겼다.
+// 원본은 radix 를 주지 않으므로 radix 0(0x 로 시작하면 16, 아니면 10)만 쓴다.
+function as3ParseInt(arg) {
+  const str = arg === undefined || arg === null ? 'null' : String(arg);   // coerce_s 뒤 Toplevel: if (!in) in = core->knull
+  const len = str.length;
+  const at = (k) => str.charCodeAt(k);                                     // 범위 밖은 NaN (아래에서 숫자가 아님으로 처리)
+  const parseIntDigit = (ch) => {
+    if (ch >= 0x30 && ch <= 0x39) return ch - 0x30;
+    if (ch >= 0x61 && ch <= 0x7a) return ch - 0x61 + 10;
+    if (ch >= 0x41 && ch <= 0x5a) return ch - 0x41 + 10;
+    return -1;
+  };
+  const skipSpaces = (index) => {
+    while (index < len) {
+      const ch = at(index);
+      if (!(ch === 0x20 || ch === 0x09 || ch === 0x0d || ch === 0x0a || ch === 0x0c || ch === 0x0b
+          || (ch >= 0x2000 && ch <= 0x200b) || ch === 0x2028 || ch === 0x2029 || ch === 0x205f || ch === 0x3000)) break;
+      index++;
+    }
+    return index;
+  };
+  let radix = 0;
+  let gotDigits = false;
+  let result = 0;
+  let index = skipSpaces(0);
+  let negate = false;                                                      // handleSign
+  if (index < len) {
+    if (at(index) === 0x2b) index++;
+    else if (at(index) === 0x2d) { negate = true; index++; }
+  }
+  const isHex = len - index >= 2 && at(index) === 0x30 && (at(index + 1) === 0x78 || at(index + 1) === 0x58);
+  if (isHex && (radix === 16 || radix === 0)) { index += 2; if (radix === 0) radix = 16; }
+  else if (radix === 0) radix = 10;
+  if (radix >= 2 && radix <= 36 && index < len) {
+    result = 0;
+    const start = index;
+    while (index < len) {
+      const v = parseIntDigit(at(index));
+      if (v === -1 || v >= radix) break;
+      result = result * radix + v;
+      gotDigits = true;
+      index++;
+    }
+    if (result >= 0x20000000000000 && (radix === 2 || radix === 4 || radix === 8 || radix === 16 || radix === 32)) {
+      // 2^53 이상: 거듭제곱 진법은 반올림 오차를 다시 계산한다(여기서는 16 만 생긴다)
+      result = 0;
+      let powOf2 = 1;
+      for (let x = radix; x !== 1; x >>= 1) powOf2++;
+      powOf2--;
+      index = start;
+      let v = 0;
+      let end, next;
+      for (end = index; end < len && at(end) === 0x30; end++);
+      if (end >= len) return 0;
+      for (next = 0; next * powOf2 <= 52; next++) {
+        v = parseIntDigit(at(end++));
+        if (v === -1 || v >= radix) { v = 0; break; }
+        result = result * radix + v;
+        if (end >= len) break;
+      }
+      if (next * powOf2 > 52) {
+        let roundUp = false, bit53 = 0, bit54 = 0, factor = 1;
+        if (radix === 16) {
+          bit53 = v & (1 << 0);
+          v = parseIntDigit(at(end));
+          if (v !== -1 && v < radix) {
+            factor *= radix;
+            bit54 = v & (1 << 3);
+            roundUp = (v & 0x3) !== 0;
+          } else {
+            roundUp = bit53 !== 0;
+          }
+        } else {
+          throw new Error('as3ParseInt: radix ' + radix + ' is not used by the original');
+        }
+        bit53 = bit53 ? 1 : 0;
+        bit54 = bit54 ? 1 : 0;
+        while (++end < len) {
+          v = parseIntDigit(at(end));
+          if (v === -1 || v >= radix) break;
+          roundUp = roundUp || (v !== 0);
+          factor *= radix;
+        }
+        roundUp = !!bit54 && (!!bit53 || roundUp);
+        result += roundUp ? 1.0 : 0.0;
+        result *= factor;
+      }
+    }
+    if (negate) result = -result;
+  }
+  return gotDigits ? result : NaN;
+}
+const trimH = (s) => String(s).replace(new RegExp(`^[${AS3_WS}]+|[${AS3_WS}]+$`, 'g'), '');
 
 const N = +(process.argv[2] || 40000);
 let seed = +(process.argv[3] || 1);
 
-const ctx = { console };
-vm.createContext(ctx);
-for (const f of ['web/js/const.js', process.env.ORESIM_ENGINE || 'web/js/engine.js']) {
-  vm.runInContext(fs.readFileSync(path.isAbsolute(f) ? f : path.join(H.REPO, f), 'utf8'), ctx, { filename: f });
-}
-const E = ctx.Oresim._as3;
-const trimH = (s) => String(s).replace(new RegExp(`^[${H.AS3_WS}]+|[${H.AS3_WS}]+$`, 'g'), '');
 
 const problems = [];
 const ch = (...c) => String.fromCharCode(...c);
@@ -56,7 +145,7 @@ const P = [
   ['0x20000000000001g5', 144115188075855872],
 ];
 for (const [inp, want] of P) {
-  for (const [who, f] of [['엔진', E.parseInt], ['하네스', H.as3ParseInt]]) {
+  for (const [who, f] of [['엔진', E.parseInt], ['참고 구현', as3ParseInt]]) {
     const got = f(inp);
     if (!Object.is(got, want)) problems.push(`${who} parseInt(${show(inp)}) = ${show(got)}, 기대 ${show(want)}`);
   }
@@ -68,13 +157,13 @@ const Tr = [
   ['x' + ch(0x2000), 'x' + ch(0x2000)], ['x' + ch(0x200a), 'x' + ch(0x200a)], ['x ' + ch(0x2029) + ' ', 'x ' + ch(0x2029)],
 ];
 for (const [inp, want] of Tr) {
-  for (const [who, f] of [['엔진', E.trim], ['하네스', trimH]]) {
+  for (const [who, f] of [['엔진', E.trim], ['참고 구현', trimH]]) {
     const got = f(inp);
     if (got !== want) problems.push(`${who} \\s 다듬기(${show(inp)}) = ${show(got)}, 기대 ${show(want)}`);
   }
 }
 
-// ---- 2. 무작위: 두 구현이 같다 ----
+// ---- 2. 무작위: 엔진 = 참고 구현 ----
 const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 const ri = (n) => Math.floor(rnd() * n);
 const pick = (a) => a[ri(a.length)];
@@ -88,9 +177,9 @@ for (let k = 0; k < N; k++) {
   else if (r === 1) s = pick(['', ' ', pick(WS)]) + pick(['', '-', '+']) + Array.from({ length: 1 + ri(40) }, () => String(ri(10))).join('') + pick(['', 'x', ' 1']);
   else if (r === 2) s = pick(['', pick(WS)]) + pick(['', '-']) + pick(['0x', '0X']) + Array.from({ length: 1 + ri(22) }, () => pick('0123456789abcdefABCDEF'.split(''))).join('') + pick(['', 'g', 'g5', '1', ' 7']);
   else s = Array.from({ length: ri(6) }, () => pick(WS)).join('') + pick(['x', '15', 'a b']) + Array.from({ length: ri(4) }, () => pick(WS)).join('');
-  const a = E.parseInt(s), b = H.as3ParseInt(s);
-  if (!Object.is(a, b)) { problems.push(`무작위 parseInt(${show(s)}): 엔진 ${show(a)} / 하네스 ${show(b)}`); if (problems.length > 30) break; }
-  if (E.trim(s) !== trimH(s)) { problems.push(`무작위 \\s 다듬기(${show(s)}): 엔진 ${show(E.trim(s))} / 하네스 ${show(trimH(s))}`); if (problems.length > 30) break; }
+  const a = E.parseInt(s), b = as3ParseInt(s);
+  if (!Object.is(a, b)) { problems.push(`무작위 parseInt(${show(s)}): 엔진 ${show(a)} / 참고 구현 ${show(b)}`); if (problems.length > 30) break; }
+  if (E.trim(s) !== trimH(s)) { problems.push(`무작위 \\s 다듬기(${show(s)}): 엔진 ${show(E.trim(s))} / 참고 구현 ${show(trimH(s))}`); if (problems.length > 30) break; }
   n++;
 }
 
@@ -99,5 +188,5 @@ if (problems.length) {
   for (const m of problems.slice(0, 30)) console.log('  - ' + m);
   process.exitCode = 1;
 } else {
-  console.log(`OK: 답을 아는 parseInt ${P.length}개·\\s 다듬기 ${Tr.length}개(엔진·하네스 모두), 무작위 ${n}개에서 엔진 = 하네스`);
+  console.log(`OK: 답을 아는 parseInt ${P.length}개·\\s 다듬기 ${Tr.length}개(엔진·참고 구현 모두), 무작위 ${n}개에서 엔진 = 참고 구현`);
 }

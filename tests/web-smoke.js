@@ -1,12 +1,12 @@
-// 웹 화면 연기 시험(smoke test): web/ 을 내보내고 진짜 브라우저(Playwright의 Chromium)로 연다.
+// 웹 화면 연기 시험(smoke test): public/ 을 내보내고 진짜 브라우저(Playwright의 Chromium)로 연다.
 // 확인하는 것: 시작, 진짜 키와 클릭으로 한 몇 가지 조작, 화면의 숫자 = OresimUI.engine().view() (와 대시 이름표 =
 // previewDash), 새로 고침 뒤 되살리기(되돌리기 기록까지), 공유 링크 왕복, 지울 계획이 있을 때 링크를 묻는 동안 주소창에 남는 링크,
 // 손으로 만든 무거운 링크의 거절, 붙여넣은 로그 왕복, 앞 판 엔진의 자동 저장(로그에서 다시 만들기, 이름이 바뀐 타입을 첫 타입으로 읽었다는
 // 알림과 그때까지 옛 기록을 두는 것), 그 로그를 담은 공유 링크의 알림, 상한이 285이던 판에서 스탯 편집으로 상한을 넘게 만든 계획의
 // 공유 링크와 자동 저장(상한으로 읽고 알린다), 1440×900 에서 LV 범위 줄이 있어도 페이지가 화면 높이 그대로인지, 깨끗한 콘솔.
 // 공유 링크 왕복에서 알려진 예외 하나: 조작 0회인 계획(처음까지 되돌린 계획 등)의 로그 첫머리 'Bonus' 줄은 원본이 기록 맨 앞 칸에
-// 덧쓴 값이라 받는 쪽에서 같은 글로 다시 만들 수 없다(원본도 같다). 보너스 값은 링크의 b 로 같아진다(web/js/app.js 의 linkCandidate).
-// 저장소는 npm 을 쓰지 않는다: playwright 를 불러오지 못하거나 브라우저를 띄우지 못하면 그렇게 말하고 0 으로 끝낸다.
+// 덧쓴 값이라 받는 쪽에서 같은 글로 다시 만들 수 없다(원본도 같다). 보너스 값은 링크의 b 로 같아진다(public/js/app.js 의 linkCandidate).
+// playwright 는 저장소의 의존성이 아니다(package.json 에 의존성이 없다): 불러오지 못하거나 브라우저를 띄우지 못하면 그렇게 말하고 0 으로 끝낸다.
 // 실행(저장소 맨 위에서): node tests/web-smoke.js
 'use strict';
 const http = require('http');
@@ -18,17 +18,17 @@ let chromium;
 try {
   ({ chromium } = require('playwright'));
 } catch (_) {
-  console.log('web-smoke: playwright 를 불러오지 못해 건너뜁니다(이 저장소는 npm 을 쓰지 않습니다). playwright 가 있는 곳에서 다시 돌리세요.');
+  console.log('web-smoke: playwright 를 불러오지 못해 건너뜁니다(저장소의 의존성이 아닙니다). npm install --no-save playwright && npx playwright install chromium 뒤에 다시 돌리세요.');
   process.exit(0);
 }
 
-const ROOT = path.join(__dirname, '..', 'web');
+const ROOT = path.join(__dirname, '..', 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png', '.mp3': 'audio/mpeg', '.svg': 'image/svg+xml' };
 
 let fails = 0;
 const ok = (cond, what) => { if (!cond) fails++; console.log(`${cond ? 'PASS' : 'FAIL'} ${what}`); };
 
-// web/ 을 내보내는 작은 서버(127.0.0.1, 빈 포트)
+// public/ 을 내보내는 작은 서버(127.0.0.1, 빈 포트)
 function serve() {
   return new Promise((resolve) => {
     const srv = http.createServer((q, r) => {

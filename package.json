@@ -1,0 +1,16 @@
+{
+  "name": "oresim",
+  "private": true,
+  "description": "테일즈위버 스탯 재분배 플래너 '나만의 재분배 시뮬레이터'의 정적 웹판",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node tools/serve.js",
+    "gen": "node tools/gen-const.js",
+    "check": "node tools/gen-const.js --check && node tests/const-check.js && node tests/as3-semantics.js",
+    "test": "npm run check && node tests/engine-golden.js && node tests/engine-invariants.js",
+    "test:web": "node tests/web-smoke.js && node tests/web-diff.js"
+  }
+}

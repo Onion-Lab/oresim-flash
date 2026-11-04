@@ -1,0 +1,32 @@
+# Apache 웹 호스팅용 설정 예. public/ 의 내용을 올린 폴더(웹 루트 등)에 이름을 .htaccess 로 바꿔 함께 올린다.
+# 호스팅이 .htaccess 를 허용해야 한다(대부분의 Apache 공유 호스팅은 허용한다). 없어도 페이지는 돈다: 캐시만 호스팅 기본값을 따른다.
+# 설명은 README.md 의 '웹에 올리기'.
+
+DirectoryIndex index.html
+AddDefaultCharset UTF-8
+AddCharset UTF-8 .html .css .js
+AddType image/svg+xml .svg
+AddType audio/mpeg .mp3
+
+<IfModule mod_headers.c>
+    # index.html: 매번 확인(바뀌지 않았으면 304)
+    <FilesMatch "\.html$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+    # index.html 이 ?v= 판 번호를 붙여 부르는 파일: 오래 캐시해도 된다
+    <FilesMatch "\.(css|js|svg)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+    # 판 번호가 없는 그림·효과음: 하루
+    <FilesMatch "\.(png|mp3)$">
+        Header set Cache-Control "public, max-age=86400"
+    </FilesMatch>
+</IfModule>
+
+# HTTPS 로 넘기기(클립보드 복사·붙여넣기 단추는 HTTPS 에서만 열린다). 호스팅이 HTTPS 를 따로 켜 주는 곳이면 지워도 된다.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>

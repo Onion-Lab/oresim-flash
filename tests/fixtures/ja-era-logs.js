@@ -1,5 +1,5 @@
 /*
- * 일본어판(커밋 14906f3, 한국어화 직전)이 출력한 재분배 로그 샘플. tests/engine-diff.js 가 한국어판에 그대로 읽힌다.
+ * 일본어판(커밋 14906f3, 한국어화 직전)이 출력한 재분배 로그 샘플. tests/engine-golden.js, tests/engine-invariants.js, tests/web-diff.js 가 한국어판에 그대로 읽힌다.
  * 저장소에 일본어 문자를 남기지 않으려고 ASCII 밖의 글자는 \u 이스케이프로 적었다(CLAUDE.md 의 한국어화 검증 규칙).
  * 일본어판 하네스로 무작위 조작을 해서 만든 것이다(다시 만들 일은 없다).
  */

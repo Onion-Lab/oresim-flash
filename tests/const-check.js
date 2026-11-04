@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /*
  * 상수 확인
- *  1. oresim/oresim-const.as 를 원본 하네스(tests/harness.js)로 읽은 표와 web/js/const.js 의 Oresim.CONST 가 깊이 같다.
- *     oresim-const.as 의 모든 선언은 CONST 에 있거나, 일부러 뺀 목록(Flash 그림 경로)에 있다.
- *  2. tools/gen-web-const.js 로 다시 만든 결과가 지금 web/js/const.js 와 바이트 단위로 같다(손으로 고치지 않았다).
- *  3. CONST 는 깊이 얼어 있다.
- *  4. 엔진이 쓰는 스테퍼 한계(스탯 편집 창 editOpen().limits, 보너스%)가 oresim.mxml 과 같다. 같은 스테퍼를 따라 적어 둔
- *     oresim_offline.mxml 의 NumericStepper 와 엔진의 STEPPER_DEFS 도 oresim.mxml 과 같다(최솟값, 최댓값, 단위, 처음 값).
- *  5. 엔진과 로그 읽기가 기대는 데이터 성질(CLAUDE.md '데이터/구조 변경 체크리스트'):
+ *  1. tools/gen-const.js 로 data/tables.json(표의 원본)에서 다시 만든 결과가 지금 public/js/const.js 와 바이트 단위로 같다
+ *     (손으로 고치지 않았다). 그 CONST 가 생성기가 만든 표와 깊이 같다.
+ *  2. CONST 는 깊이 얼어 있다.
+ *  3. 엔진의 스테퍼(STEPPER_DEFS, 원래 Flash 판 화면의 NumericStepper 값)가 표와 맞는다: 스탯 편집 창의 LV·스탯·HP/MP/SP 칸의
+ *     최댓값 = MAX_LEVEL/MAX_STATUS(엔진은 창을 열 때 표의 상한으로 바꾸지만, 같은 값을 따라 적어 둔다), 편집 창 한계(editOpen().limits)와
+ *     보너스% 스테퍼의 반올림·범위가 STEPPER_DEFS 와 같다.
+ *  4. 엔진과 로그 읽기가 기대는 데이터 성질(CLAUDE.md '데이터/구조 변경 체크리스트'):
  *     타입마다 기본 계열이 하나이고 그 캐릭터 드롭다운에 있다, 드롭다운 계열에는 이름이 있다,
  *     캐릭터·타입·계열 이름 규칙(공백·'/'·':' 금지, 앞부분 겹침 금지 등), 표 크기.
- *  6. 문자 코드: const.js/engine.js 를 UTF-8 이 아닌 문자 코드(latin1, windows-1252, EUC-KR, Shift_JIS)로 읽어도
+ *  5. 문자 코드: const.js/engine.js 를 UTF-8 이 아닌 문자 코드(latin1, windows-1252, EUC-KR, Shift_JIS)로 읽어도
  *     표가 같고 엔진의 출력(로그, 육성 가이드, 한국어 로그 읽기)이 UTF-8 로 읽었을 때와 같다(문자열이 ASCII 로만 되어 있다).
  * 사용법: node tests/const-check.js
  */
@@ -19,22 +19,19 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const H = require('./harness');
-const gen = require('../tools/gen-web-const');
+const X = require('./engine-host');
+const gen = require('../tools/gen-const');
 
 const problems = [];
 const bad = (m) => problems.push(m);
 
-// const.js / engine.js 읽기
+// const.js / engine.js 읽기(엔진은 ORESIM_ENGINE=경로 를 주면 그 파일)
 const ctx = { console };
 vm.createContext(ctx);
-for (const f of ['web/js/const.js', 'web/js/engine.js']) vm.runInContext(fs.readFileSync(path.join(H.REPO, f), 'utf8'), ctx, { filename: f });
+for (const f of [path.join(X.REPO, 'public/js/const.js'), process.env.ORESIM_ENGINE || path.join(X.REPO, 'public/js/engine.js')]) vm.runInContext(fs.readFileSync(f, 'utf8'), ctx, { filename: f });
 const CONST = ctx.Oresim.CONST;
 
-// 1. 원본 하네스의 표와 깊이 비교
-const S = H.createSim(H.REPO, { init: false });   // initApp 전: 콤보박스 목록(xienList 등)이 아직 처음 값이다
 function plain(v) {
-  if (v && typeof v === 'object' && Array.isArray(v.source) && typeof v.getItemAt === 'function') return plain(v.source);   // ArrayCollection
   if (Array.isArray(v)) return v.map(plain);
   if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = plain(v[k]); return o; }
   return v;
@@ -51,7 +48,7 @@ function deepEq(a, b, p) {
   }
   if (a && typeof a === 'object') {
     if (!b || typeof b !== 'object') return bad(`${p}: 객체/객체 아님`);
-    const ka = Object.keys(a).sort(), kb = Object.keys(b).sort();
+    const ka = Object.keys(a), kb = Object.keys(b);
     if (ka.join() !== kb.join()) return bad(`${p}: 키 ${ka} / ${kb}`);
     for (const k of ka) deepEq(a[k], b[k], `${p}.${k}`);
     return undefined;
@@ -59,67 +56,53 @@ function deepEq(a, b, p) {
   if (!Object.is(a, b)) bad(`${p}: ${JSON.stringify(a)} / ${JSON.stringify(b)}`);
   return undefined;
 }
-const declared = gen.loadTables().map(([name]) => name);   // 생성기가 옮기는 이름(뺀 것 제외, 소스 순서)
-const constSrc = fs.readFileSync(path.join(H.REPO, 'oresim', 'oresim-const.as'), 'utf8');
-const allDecl = [...gen.stripAs3(constSrc).replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/\bvar\s+(\w+)/g)].map((m) => m[1]);
-for (const name of allDecl) {
-  if (gen.DROPPED.has(name)) { if (name in CONST) bad(`${name}: 뺀다고 한 이름이 CONST 에 있다`); continue; }
-  if (!(name in CONST)) { bad(`${name}: oresim-const.as 에 있는데 CONST 에 없다`); continue; }
-  deepEq(plain(S[name]), plain(CONST[name]), name);
+
+// 1. data/tables.json 에서 다시 만든 결과와 같은가
+let built = null;
+try {
+  const data = gen.readTables();
+  built = gen.buildConst(data);
+  if (gen.generate(data) !== fs.readFileSync(gen.OUT, 'utf8')) bad('public/js/const.js 가 node tools/gen-const.js 결과와 다르다(표를 고쳤으면 다시 만든다)');
+} catch (e) {
+  if (!(e instanceof gen.TableError)) throw e;
+  bad(e.message);
 }
-for (const name of Object.keys(CONST)) if (!allDecl.includes(name)) bad(`${name}: CONST 에만 있다`);
-if (declared.join() !== Object.keys(CONST).join()) bad(`CONST 의 이름 순서가 소스 순서와 다르다`);
+if (built) {
+  if (built.map(([k]) => k).join() !== Object.keys(CONST).join()) bad('CONST 의 이름(순서)이 생성기가 만든 표와 다르다');
+  for (const [name, value] of built) deepEq(plain(value), plain(CONST[name]), name);
+}
 
-// 2. 다시 만든 결과와 같은가
-if (gen.generate() !== fs.readFileSync(gen.OUT, 'utf8')) bad('web/js/const.js 가 node tools/gen-web-const.js 결과와 다르다');
-
-// 3. 깊이 얼어 있는가
+// 2. 깊이 얼어 있는가
 (function frozen(o, p) {
   if (!Object.isFrozen(o)) bad(`${p}: 얼어 있지 않다`);
   for (const k of Object.keys(o)) if (o[k] && typeof o[k] === 'object') frozen(o[k], `${p}.${k}`);
 })(CONST, 'CONST');
 
-// 4. 스테퍼 한계 = oresim.mxml
-const mxml = fs.readFileSync(path.join(H.REPO, 'oresim.mxml'), 'utf8');
-const steppers = {};
-for (const tag of mxml.match(/<mx:NumericStepper\b[^>]*>/g)) {
-  const a = Object.fromEntries([...tag.matchAll(/(\w+)="([^"]*)"/g)].map((m) => [m[1], m[2]]));
-  steppers[a.id] = [+a.minimum, +a.maximum, +a.stepSize];
-}
-const E = ctx.Oresim.createEngine();
-const lim = E.editOpen().limits;
-// statusEdit() 는 slv, ss0~ss9 의 maximum 을 MAX_LEVEL/MAX_STATUS 로 바꾼다. 그 밖은 MXML 그대로
-const expectLim = (id, max) => [steppers[id][0], max !== undefined ? max : steppers[id][1], steppers[id][2]];
-deepEq(plain(lim.lv), expectLim('slv', CONST.MAX_LEVEL), 'limits.lv');
-for (let i = 0; i < 7; i++) deepEq(plain(lim.stats[i]), expectLim(`ss${i}`, CONST.MAX_STATUS[i]), `limits.stats[${i}]`);
-deepEq(plain(lim.hp), expectLim('ss7', CONST.MAX_STATUS[7]), 'limits.hp');
-deepEq(plain(lim.mp), expectLim('ss8', CONST.MAX_STATUS[8]), 'limits.mp');
-deepEq(plain(lim.sp), expectLim('ss9', CONST.MAX_STATUS[9]), 'limits.sp');
-deepEq(plain(lim.point), expectLim('ss11'), 'limits.point');
-for (const id of ['slv', 'ss0', 'ss1', 'ss2', 'ss3', 'ss4', 'ss5', 'ss6']) {
-  const want = id === 'slv' ? CONST.MAX_LEVEL : CONST.MAX_STATUS[+id.slice(2)];
-  if (steppers[id][1] !== want) bad(`oresim.mxml 의 ${id} maximum ${steppers[id][1]} 이 상수 ${want} 와 다르다(CLAUDE.md: 같은 값으로 맞춰 둔다)`);
-}
-const [bmin, bmax, bstep] = steppers.bonusNS;
-if (E.setBonus(bmin - 10).rate !== bmin || E.setBonus(bmax + 10).rate !== bmax || E.setBonus(bstep + bstep / 2 - 0.1).rate !== bstep) bad('보너스% 스테퍼 한계·단위가 oresim.mxml 과 다르다');
-// 같은 스테퍼를 따라 적어 둔 두 곳도 oresim.mxml 과 같다: oresim_offline.mxml 의 NumericStepper 와 엔진의 STEPPER_DEFS
-// ([minimum, maximum, stepSize, 처음 value]). 엔진은 편집 창을 열 때 slv·ss0~ss9 의 maximum 을 상수로 바꾸므로, STEPPER_DEFS 의
-// 숫자가 틀려도 위의 limits 와 차등 시험에는 드러나지 않는다
-const stepperDefs = (src) => {
-  const out = {};
-  for (const tag of src.match(/<mx:NumericStepper\b[^>]*>/g) || []) {
-    const a = Object.fromEntries([...tag.matchAll(/(\w+)="([^"]*)"/g)].map((m) => [m[1], m[2]]));
-    out[a.id] = [+a.minimum, +a.maximum, +a.stepSize, +a.value];
+// 3. 스테퍼: 엔진의 STEPPER_DEFS([minimum, maximum, stepSize, 처음 value]) ↔ 표의 상한, 편집 창 한계, 보너스%
+const defsSrc = (fs.readFileSync(process.env.ORESIM_ENGINE || path.join(X.REPO, 'public/js/engine.js'), 'utf8').match(/var STEPPER_DEFS = \{([\s\S]*?)\};/) || [])[1];
+const defs = defsSrc ? Object.fromEntries([...defsSrc.matchAll(/(\w+): \[([^\]]*)\]/g)].map((m) => [m[1], m[2].split(',').map(Number)])) : null;
+if (!defs) bad('public/js/engine.js 에서 STEPPER_DEFS 를 찾지 못했다');
+else {
+  const want = { slv: CONST.MAX_LEVEL };
+  for (let i = 0; i <= 9; i++) want[`ss${i}`] = CONST.MAX_STATUS[i];
+  for (const id of Object.keys(want)) {
+    if (!defs[id]) bad(`STEPPER_DEFS 에 ${id} 가 없다`);
+    else if (defs[id][1] !== want[id]) bad(`STEPPER_DEFS 의 ${id} 최댓값 ${defs[id][1]} 이 표의 상한 ${want[id]} 와 다르다(같은 값으로 맞춰 둔다. CLAUDE.md 'MAX_LEVEL/MAX_STATUS 변경')`);
   }
-  return out;
-};
-const mxmlDefs = stepperDefs(mxml);
-deepEq(stepperDefs(fs.readFileSync(path.join(H.REPO, 'oresim_offline.mxml'), 'utf8')), mxmlDefs, 'oresim_offline.mxml 의 NumericStepper');
-const defsSrc = (fs.readFileSync(path.join(H.REPO, 'web/js/engine.js'), 'utf8').match(/var STEPPER_DEFS = \{([\s\S]*?)\};/) || [])[1];
-if (!defsSrc) bad('web/js/engine.js 에서 STEPPER_DEFS 를 찾지 못했다');
-else deepEq(Object.fromEntries([...defsSrc.matchAll(/(\w+): \[([^\]]*)\]/g)].map((m) => [m[1], m[2].split(',').map(Number)])), mxmlDefs, 'engine.js 의 STEPPER_DEFS');
+  const E = ctx.Oresim.createEngine();
+  const lim = E.editOpen().limits;
+  const expectLim = (id) => [defs[id][0], defs[id][1], defs[id][2]];
+  deepEq(plain(lim.lv), expectLim('slv'), 'limits.lv');
+  for (let i = 0; i < 7; i++) deepEq(plain(lim.stats[i]), expectLim(`ss${i}`), `limits.stats[${i}]`);
+  deepEq(plain(lim.hp), expectLim('ss7'), 'limits.hp');
+  deepEq(plain(lim.mp), expectLim('ss8'), 'limits.mp');
+  deepEq(plain(lim.sp), expectLim('ss9'), 'limits.sp');
+  deepEq(plain(lim.point), expectLim('ss11'), 'limits.point');
+  const [bmin, bmax, bstep] = defs.bonusNS;
+  if (E.setBonus(bmin - 10).rate !== bmin || E.setBonus(bmax + 10).rate !== bmax || E.setBonus(bstep + bstep / 2 - 0.1).rate !== bstep) bad('보너스% 스테퍼의 범위·단위가 STEPPER_DEFS.bonusNS 와 다르다');
+}
 
-// 5. 데이터 성질
+// 4. 데이터 성질
 const C = CONST;
 const nChar = C.CHAR_NAME.length;
 for (const k of ['STYLE_NAME', 'DEFAULT_STATUS', 'DEFAULT_NEED_POINT', 'DEFAULT_XIEN', 'MAX_XIEN']) if (C[k].length < nChar) bad(`${k} 가 캐릭터 수보다 짧다`);
@@ -154,7 +137,7 @@ for (let c = 0; c < nChar; c++) {
   }
 }
 
-// 6. 다른 문자 코드로 읽어도 같다
+// 5. 다른 문자 코드로 읽어도 같다
 function runSample(O) {
   const X = O.createEngine();
   X.setChar(15); X.setType(0);
@@ -176,7 +159,7 @@ for (const [enc, decode] of decoders) {
   const c2 = { console };
   vm.createContext(c2);
   try {
-    for (const f of ['web/js/const.js', 'web/js/engine.js']) vm.runInContext(decode(fs.readFileSync(path.join(H.REPO, f))), c2, { filename: f });
+    for (const f of ['public/js/const.js', 'public/js/engine.js']) vm.runInContext(decode(fs.readFileSync(path.join(X.REPO, f))), c2, { filename: f });
   } catch (e) {
     bad(`${enc} 로 읽으면 실행되지 않는다: ${e.message}`);
     continue;
@@ -191,5 +174,5 @@ if (problems.length) {
   for (const m of problems.slice(0, 40)) console.log('  - ' + m);
   process.exitCode = 1;
 } else {
-  console.log(`OK: CONST ${Object.keys(CONST).length}개 = oresim-const.as (뺀 것: ${[...gen.DROPPED].filter((n) => allDecl.includes(n)).length}개 그림 경로), 다시 만든 const.js 와 같음, 얼어 있음, 스테퍼 한계 = oresim.mxml = oresim_offline.mxml = STEPPER_DEFS, 데이터 성질 OK, 문자 코드 ${decoders.map((d) => d[0]).join('/')} 로 읽어도 같음`);
+  console.log(`OK: CONST ${Object.keys(CONST).length}개 = data/tables.json 에서 다시 만든 const.js, 얼어 있음, 스테퍼 최댓값 = 표의 상한, 편집 창 한계 = STEPPER_DEFS, 데이터 성질 OK, 문자 코드 ${decoders.map((d) => d[0]).join('/')} 로 읽어도 같음`);
 }

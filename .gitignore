@@ -1,14 +1,5 @@
-# Build and Release Folders
-bin/
-bin-debug/
-bin-release/
-
-# Other files and folders
-.settings/
-
-# Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
-# should NOT be excluded as they contain compiler settings and other important
-# information for Eclipse / Flash Builder.
+# Node: 화면 시험용으로 playwright 를 저장소 안에 설치했을 때(npm install --no-save playwright)
+node_modules/
 
 # Taste Skill 작업 파일(검사 결과, 스크린샷): 저장소에 넣지 않는다
 .taste-skill/

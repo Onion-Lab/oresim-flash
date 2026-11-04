@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 /*
- * 웹 화면 차등 시험(진짜 브라우저): web/index.html 을 file:// 로 Chromium(Playwright)에 열고 진짜 입력(키, 클릭, 타자)으로만
- * 움직인다. 같은 조작을 원본(tests/harness.js 의 H.createOracle(): 원본 AS3 를 헤드리스로 실행)에도 넣고, 조작마다 화면이
- * 보여 주는 것(DOM 의 글자)이 원본의 상태와 같은지 본다.
+ * 웹 화면 차등 시험(진짜 브라우저): public/index.html 을 file:// 로 Chromium(Playwright)에 열고 진짜 입력(키, 클릭, 타자)으로만
+ * 움직인다. 같은 조작을 원본에도 넣고, 조작마다 화면이 보여 주는 것(DOM 의 글자)이 원본의 상태와 같은지 본다.
+ * 이 시험의 '원본'은 Node 에서 따로 돌리는 같은 엔진(public/js/engine.js)이다. 엔진은 원래 Flash 판의 AS3 를 동작 그대로 옮긴 것이고
+ * 그 원본과 같은지는 tests/engine-golden.js 가 본다. 원본의 상태는 엔진의 내부 상태를 원래 컨트롤 이름으로 읽어(tests/engine-host.js 의
+ * stateS) 화면 값을 따로 계산한다(엔진의 view() 는 쓰지 않는다). 그래서 이 시험은 화면이 사람의 입력을 엔진에 바르게 보내는지와
+ * 엔진 상태를 바르게 그리는지를 본다.
  *   - 캐릭터/타입, LV, POINT, 일곱 스탯의 값과 필요 포인트(와 비용이 오르는 값), HP/MP/SP 의 값과 범위, 보너스 칸과 보너스 기록,
  *     되돌리기/다시 실행/레벨업·+1 단추가 켜져 있는지, 주력 계열의 선택과 고를 수 있는 줄, ▲ 표시와 '직전 조작',
  *     제목·아래 바·초기화 안내의 이름과 숫자, 로그 표의 줄, 화면 글자에 NaN/undefined 가 없는지, 콘솔이 깨끗한지
@@ -25,7 +28,7 @@
  * 세어 두기만 하는 것(차이가 아니다, 끝에 찍는다):
  *   refused-but-changed 불러오기가 원본처럼 중간에 멈춘(예: 'Bonus :75%') 뒤에는 받아들여지지 않은 ←/→/대시도 원본·엔진이
  *                       updateStatus 로 비용 단계 등을 바로잡는다. 화면도 그때 다시 그리므로 그 뒤 화면을 원본과 그대로 맞춘다
- * 저장소는 npm 을 쓰지 않는다: playwright 를 불러오지 못하거나 브라우저를 띄우지 못하면 그렇게 말하고 0 으로 끝낸다.
+ * playwright 는 저장소의 의존성이 아니다(package.json 에 의존성이 없다): 불러오지 못하거나 브라우저를 띄우지 못하면 그렇게 말하고 0 으로 끝낸다.
  * 사용법(저장소 맨 위에서): node tests/web-diff.js [seeds=20] [steps=150] [firstSeed=1]
  *   WEBDIFF_PROBE=n    n 조작마다 일곱 대시와 다음 레벨업을 원본 사본에서 실제로 해 본다(기본 5, 0 이면 끈다)
  *   WEBDIFF_SCRIPTS=0  정해 둔 순서(로아미니, 최고 레벨, 스탯 상한, 스탯 편집, 편집을 넘는 되돌리기, 불러오기 뒤 되돌리기 등)를 건너뛴다
@@ -33,7 +36,7 @@
  *   WEBDIFF_EMPTY=1    스탯 편집에서 칸을 비우는 입력도 넣는다(화면도 원본 Flex 처럼 빈 칸을 그 칸의 최솟값으로 읽는다)
  *   WEBDIFF_VERBOSE=1  조작을 하나씩 찍는다
  *   WEBDIFF_SHOTS=폴더  어긋난 곳의 화면을 그 폴더에 남긴다
- *   WEBDIFF_WEB=폴더    web/ 대신 그 폴더의 index.html 을 연다(일부러 고장 낸 화면을 이 시험이 잡아내는지 볼 때)
+ *   WEBDIFF_WEB=폴더    public/ 대신 그 폴더의 index.html 을 연다(일부러 고장 낸 화면을 이 시험이 잡아내는지 볼 때)
  *   WEBDIFF_TRACE=폴더  어긋나면 화면 조작과 원본에 넣은 조작(JSON)을 그 폴더에 남긴다(원본만으로 다시 재현할 때)
  */
 'use strict';
@@ -41,14 +44,14 @@
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
-const H = require('./harness');
+const X = require('./engine-host');
 const JA_LOGS = require('./fixtures/ja-era-logs');
 
 let chromium;
 try {
   ({ chromium } = require('playwright'));
 } catch (_) {
-  console.log('web-diff: playwright 를 불러오지 못해 건너뜁니다(이 저장소는 npm 을 쓰지 않습니다). playwright 가 있는 곳에서 다시 돌리세요.');
+  console.log('web-diff: playwright 를 불러오지 못해 건너뜁니다(저장소의 의존성이 아닙니다). npm install --no-save playwright && npx playwright install chromium 뒤에 다시 돌리세요.');
   process.exit(0);
 }
 
@@ -60,13 +63,16 @@ const SCRIPTS = process.env.WEBDIFF_SCRIPTS || '1';
 const WITH_EMPTY = process.env.WEBDIFF_EMPTY === '1';
 const VERBOSE = !!process.env.WEBDIFF_VERBOSE;
 const SHOTS = process.env.WEBDIFF_SHOTS || '';
-const PAGE_URL = pathToFileURL(path.join(process.env.WEBDIFF_WEB ? path.resolve(process.env.WEBDIFF_WEB) : path.join(H.REPO, 'web'), 'index.html')).href;
+const PAGE_URL = pathToFileURL(path.join(process.env.WEBDIFF_WEB ? path.resolve(process.env.WEBDIFF_WEB) : path.join(X.REPO, 'public'), 'index.html')).href;
 
 // ---- 표와 말 ----
 const STATS = ['STAB', 'HACK', 'INT', 'DEF', 'MR', 'DEX', 'AGI'];
 const SHORTCUT = ['S', 'H', 'I', 'F', 'M', 'X', 'A'];
-// 최고 레벨과 일곱 스탯의 상한: 원본 표(oresim-const.as)에서 읽는다. 상한 둘레의 값(바로 아래, 그 값, 바로 위)도 이것으로 만든다
-const TABLES = H.createSim(H.REPO, { init: false });
+// 원본: Node 에서 돌리는 엔진(브라우저처럼 const.js → engine.js. ORESIM_ENGINE=경로 를 주면 그 엔진 파일)
+const Oresim = X.loadOresim();
+const as3ParseInt = Oresim._as3.parseInt;   // 엔진 안의 parseInt(AS3 의 것. tests/as3-semantics.js 가 답과 맞춰 본다)
+// 최고 레벨과 일곱 스탯의 상한: 표(Oresim.CONST)에서 읽는다. 상한 둘레의 값(바로 아래, 그 값, 바로 위)도 이것으로 만든다
+const TABLES = Oresim.CONST;
 const MAX_LV = TABLES.MAX_LEVEL;
 const STAT_CAP = STATS.map((_, i) => TABLES.MAX_STATUS[i]);
 const CAP_EDGE = [...new Set([MAX_LV, ...STAT_CAP])].flatMap((m) => [m - 1, m, m + 1]);
@@ -91,7 +97,7 @@ const KEEP_IT = '남겨 두려면 먼저 링크 복사를 하세요.';
 const JA_AFTER = '일본어판에서 만든 로그로 보입니다. 캐릭터·계열 이름이 달라 결과가 원래 계획과 다를 수 있습니다.';
 // 타입 이름을 알아보지 못한 붙여넣은 로그의 안내 끝에 붙는 고치는 법(승인된 문구)
 const FIX_TYPE = '다른 타입이었다면 로그 끝의 캐릭터/타입 줄을 지금 이름(예: 루시안/베기형)으로 고쳐 다시 불러오세요.';
-// 글에 지금 상한을 넘는 값이 있어 상한에 맞춰 읽은 불러오기(원본 하네스 importLog 의 capped). 읽기가 중간에 멈췄으면(error) 말하지 않는다
+// 글에 지금 상한을 넘는 값이 있어 상한에 맞춰 읽은 불러오기(importLog 의 capped). 읽기가 중간에 멈췄으면(error) 말하지 않는다
 const cappedRead = (r) => !!(r && r.capped && !r.error);
 const capWords = (done) => `LV나 스탯이 상한(${fmt(MAX_LV)})을 넘어 상한에 맞춰 ${done ? '읽었습니다' : '읽습니다'}.`;
 const STEP_ACTS = new Set(['levelUp', 'statUp', 'dash', 'undo', 'redo', 'editCommit']);
@@ -116,18 +122,26 @@ function makeRng(seed) {
 }
 
 // ---- 원본: 조작마다 기록해 두고(사본은 처음부터 다시 돌려 만든다) ----
-function makeOracle(replay) {
-  const A = H.createOracle();
-  const trace = [];
-  const O = { A, S: A.S, trace, call(f, ...args) { trace.push([f, ...args]); return A[f](...args); } };
-  for (const [f, ...args] of replay || []) O.call(f, ...args);
-  return O;
-}
-function fork(trace) {
-  const B = H.createOracle();
-  for (const [f, ...args] of trace) B[f](...args);
+// 엔진 한 벌. B.S 는 그 상태를 원래 컨트롤 이름으로 읽는 사본이다(조작을 부르면 다음에 읽을 때 다시 만든다)
+function oracleEngine(replay) {
+  const E = Oresim.createEngine();
+  let S = null;
+  const B = new Proxy(E, {
+    get(t, k) {
+      if (k === 'S') return S || (S = X.stateS(E, Oresim.CONST));
+      const v = t[k];
+      return typeof v === 'function' ? (...a) => { S = null; return v.apply(t, a); } : v;
+    },
+  });
+  for (const [f, ...args] of replay || []) B[f](...args);
   return B;
 }
+function makeOracle(replay) {
+  const A = oracleEngine(replay);
+  const trace = (replay || []).slice();
+  return { A, get S() { return A.S; }, trace, call(f, ...args) { trace.push([f, ...args]); return A[f](...args); } };
+}
+const fork = (trace) => oracleEngine(trace);
 
 // 원본 상태에서 화면이 보여 줘야 할 값(엔진 view() 의 모양을 원본의 컨트롤 글자에서 직접)
 function oracleNow(S) {
@@ -135,7 +149,7 @@ function oracleNow(S) {
   const lv = num('lv');
   const stats = STATS.map((key, i) => ({
     key, value: num(`s${i}`), cost: num(`p${i}`), next: num(`s${i}L`),
-    canUp: !!S[`s${i}up`].visible, canDash: !!S[`s${i}dup`].visible, atCap: H.as3ParseInt(S[`s${i}`].text) >= S.MAX_STATUS[i],
+    canUp: !!S[`s${i}up`].visible, canDash: !!S[`s${i}dup`].visible, atCap: as3ParseInt(S[`s${i}`].text) >= S.MAX_STATUS[i],
   }));
   const nextLog = S.log[S.logindex + 1];
   // 스탯 편집으로 시작한 계획: 이 계획의 시작 레벨(log[0][0]) 칸이 's' 로 시작한다(원본 logOut 이 Status 줄을 쓰는 조건)
@@ -146,9 +160,9 @@ function oracleNow(S) {
   // 불러오기 뒤, 다음에 updateStatus() 를 도는 조작까지). 화면은 그때 'N부터 M' 대신 원본처럼 초록 숫자만 보인다
   const dnp = S.DEFAULT_NEED_POINT[c] && S.DEFAULT_NEED_POINT[c][S.styleCB.selectedIndex];
   const stale = !!dnp && STATS.some((_, i) => {
-    const lvN = H.as3ParseInt(S.lv.text);
-    const cost = dnp[i] + Math.floor((lvN + H.as3ParseInt(S[`s${i}`].text) * 5) / 125);
-    const next = Math.ceil(25 - lvN / 5) + (H.as3ParseInt(String(cost)) - dnp[i]) * 25;
+    const lvN = as3ParseInt(S.lv.text);
+    const cost = dnp[i] + Math.floor((lvN + as3ParseInt(S[`s${i}`].text) * 5) / 125);
+    const next = Math.ceil(25 - lvN / 5) + (as3ParseInt(String(cost)) - dnp[i]) * 25;
     return !Object.is(Number(S[`p${i}`].text), cost) || !Object.is(Number(S[`s${i}L`].text), next);
   });
   return {
@@ -949,7 +963,24 @@ class Run {
     await this.waitClosed('#edit-dialog');
   }
   // 붙여넣은 로그: 칸에 넣는 방법(input) → 불러오는 방법(load) → 확인 창(decision)
-  async importLog(kind, text, input, load, decision) {
+  // 로그 불러오기 뒤 좁은 화면(1180px 아래)은 안내가 보이게 스크롤한다(곧바로, 그리고 250ms 뒤에 한 번 더. 움직임 줄이기가 아니면 부드럽게).
+  // 그 스크롤이 멈추기 전에 다음 조작이 누를 자리를 셈하면 다른 줄을 누르므로(사람은 그렇게 빨리 누르지 않는다), 250ms 를 넘겨 스크롤이 멈출 때까지 기다린다
+  async importLog(...args) {
+    try {
+      return await this.importLogNow(...args);
+    } finally {
+      if (this.layout !== 'wide') await this.settleScroll();
+    }
+  }
+  async settleScroll() {
+    await this.page.waitForTimeout(300);
+    await this.page.evaluate(() => new Promise((done) => {
+      let last = window.scrollY, same = 0, n = 0;
+      const tick = () => { const y = window.scrollY; same = y === last ? same + 1 : 0; last = y; if (same >= 3 || ++n > 180) done(); else requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    }));
+  }
+  async importLogNow(kind, text, input, load, decision) {
     const page = this.page;
     this.stats.imports[kind] = (this.stats.imports[kind] || 0) + 1;
     this.note(`로그 불러오기 ${kind}(${text.split(/\r\n|\r|\n/).length}줄) ${input}/${load}/${decision}`);
