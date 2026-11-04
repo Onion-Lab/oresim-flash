@@ -309,6 +309,77 @@ const decodeLink = (link) => {
     ok(inLog.ranges > 0 && inGuide.ranges > 0 && inLog.doc === 900 && inLog.inner === 900 && inGuide.doc === 900,
       `1440×900 with LV range rows (log ${inLog.ranges}, guide ${inGuide.ranges}): the page stays ${inLog.doc} px in the log tab and ${inGuide.doc} px in the guide tab`);
     await b.c.close();
+
+    // ---- 붙여넣은 로그의 안내(2026-11-04 사용자 결정): 글을 칸에 남긴 타입·상한 안내는 그 글을 고치는 동안 남고(지우기·다음 불러오기·칸 비우기에
+    //      바뀐다), 다른 안내는 전처럼 고치면 지워진다. 1180px 아래에서는 불러온 뒤 안내가 위·아래 고정 바에 가리지 않게 보인다 ----
+    const loadMsgText = (p) => p.evaluate(() => document.querySelector('#load-msg').textContent.replace(/⁠/g, ''));
+    // 옛 판 로그 흉내: 지금 엔진으로 만든 계획(LV 41)의 캐릭터/타입 줄을 '루시안/베기'로(타입을 알아보지 못한다), 요약 줄의 STAB 을 상한 넘게(상한에 맞춰 읽는다)
+    const oldLog = (p, opts) => p.evaluate((o) => {
+      const C = window.Oresim.createEngine();
+      for (let i = 0; i < 40; i++) { C.levelUp(); C.statUp(i % 7); C.statUp(0); }
+      let log = C.exportLog();
+      if (o.renamed) log = log.replace(/^(\S+)\/\S+ Bonus:/m, '$1/베기 Bonus:');
+      if (o.over) log = log.replace(/^LV:(\d+) STAB \d+/m, `LV:$1 STAB ${window.Oresim.CONST.MAX_STATUS[0] + 45}`);
+      if (o.footerless) log = log.split('\r').filter((l) => !/ Bonus:|^LV:/.test(l)).join('\r');
+      return log.split('\r').join('\n');
+    }, opts);
+    {
+      const c = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const p = await newPage(c);
+      await p.goto(base + 'index.html');
+      await p.waitForTimeout(300);
+      const text = await oldLog(p, { renamed: true });
+      await p.click('#load');                                     // 1440 에서는 접힌 칸을 연다
+      await p.fill('#paste-text', text);
+      await p.click('#load');
+      await p.waitForTimeout(200);
+      const first = await loadMsgText(p);
+      await p.click('#paste-text');
+      await p.keyboard.press('Control+End');
+      await p.keyboard.type('x');                                 // 글을 고친다
+      const typed = await loadMsgText(p);
+      await p.click('#clear');
+      const cleared = await loadMsgText(p);
+      // 견줄 것: 캐릭터/타입 줄이 없는 글(처음부터 다시 읽음, 상한 안)의 안내는 고치면 지워진다(지우기가 접은 칸은 불러오기로 다시 연다)
+      await p.click('#load');
+      await p.fill('#paste-text', await oldLog(p, { footerless: true }));
+      await p.click('#load');
+      await p.waitForSelector('#confirm[open]');
+      await p.click('#confirm-go');
+      await p.waitForTimeout(500);
+      const plain = await loadMsgText(p);
+      await p.click('#paste-text');
+      await p.keyboard.press('Control+End');
+      await p.keyboard.type('x');
+      const plainTyped = await loadMsgText(p);
+      ok(/다른 타입이었다면 로그 끝의 캐릭터\/타입 줄을/.test(first) && typed === first && cleared === '' && /처음부터 읽었습니다\.$/.test(plain) && plainTyped === '',
+        `the type-lost notice stays while the pasted text is edited and goes with 지우기; other notices still clear on edit ("${first.slice(0, 40)}…")`);
+      await c.close();
+    }
+    for (const [w, hgt] of [[390, 844], [1024, 768]]) {
+      const c = await browser.newContext({ viewport: { width: w, height: hgt } });
+      const p = await newPage(c);
+      await p.goto(base + 'index.html');
+      await p.waitForTimeout(300);
+      const text = await oldLog(p, { renamed: true, over: true });
+      // 칸이 화면 밖에 있을 때(맨 위) P 로 불러온다
+      await p.evaluate((t) => { const ta = document.querySelector('#paste-text'); ta.value = t; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.blur(); window.scrollTo(0, 0); }, text);
+      await p.keyboard.press('KeyP');
+      await p.waitForFunction(() => document.querySelector('#load-msg').textContent.includes('상한에 맞춰 읽었습니다'));
+      // 스크롤이 멈출 때까지 기다린다(부드러운 스크롤)
+      let last = -1;
+      for (let i = 0; i < 40; i++) { await p.waitForTimeout(100); const y = await p.evaluate(() => scrollY); if (y === last) break; last = y; }
+      const at = await p.evaluate(() => {
+        const m = document.querySelector('#load-msg').getBoundingClientRect();
+        const top = document.querySelector('.topbar').getBoundingClientRect().bottom;
+        const bar = document.querySelector('.actionbar');
+        const bottom = getComputedStyle(bar).display === 'none' ? innerHeight : bar.getBoundingClientRect().top;
+        return { top: Math.round(m.top), bottom: Math.round(m.bottom), min: Math.round(top), max: Math.round(bottom), y: Math.round(scrollY) };
+      });
+      ok(at.y > 0 && at.top >= at.min && at.bottom <= at.max,
+        `${w}×${hgt}: after loading from the top of the page, the notice is brought into view between the bars (notice ${at.top}–${at.bottom}, view ${at.min}–${at.max}, scrolled to ${at.y})`);
+      await c.close();
+    }
     await ctx.close();
     ok(logs.length === 0, 'console clean' + (logs.length ? `: ${logs.join(' | ')}` : ''));
   } catch (e) {

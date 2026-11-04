@@ -11,7 +11,7 @@
 | `node tests/as3-semantics.js [개수=40000] [seed=1]` | 엔진과 하네스가 흉내 내는 AS3 의 전역 `parseInt` 와 RegExp `\s` 가 avmplus 소스에서 따진 답과 같은지, 무작위 글자열에서 두 구현이 서로 같은지 |
 | `node tests/engine-diff.js [seeds=50] [조작수=400] [첫seed=1]` | **차등 퍼저.** 같은 무작위 조작을 원본(하네스)과 엔진에 넣고 조작마다 결과값(`importLog` 의 `capped` 까지), 상태 전체, `view()`, `exportLog()`, `guide()` 를 비교한다. `preview()`/`previewDash(i)` 는 그 뒤 원본이 실제로 한 레벨업·대시와 비교한다. 처음 어긋난 곳에서 seed·순서·조작 목록·다른 칸을 찍고 종료 코드 1 로 멈춘다 |
 | `node tests/engine-invariants.js [runs=40] [seed=777]` | **불변식 퍼저.** 엔진만 돌리며 로그 왕복 재현, ←×k →×k 복귀, P 멱등, 편집 창 '적용' 무변화, Xien ≤ MAX_XIEN, 예외 없음, `serialize()` → `createEngine(saved)` 동등성, `preview()` = 실제 레벨업, `previewDash(i)` = 실제 대시, 결과 모양(`{ ok, sound }`), 로그 상자(`logPane()`)가 바뀌는 때, `importLog` 의 `footer`/`typeFound`/`restarted`/`capped`, 상한이 285이던 판의 로그를 상한으로 읽기(`capped.*`), 반복 안전장치, 결과 객체 격리, 잘못된 저장 상태 거부 |
-| `node tests/web-smoke.js` | **화면 연기 시험(선택, Playwright).** 시작, 진짜 키·클릭 뒤 화면의 숫자 = `OresimUI.engine().view()`, 새로 고침 뒤 되살리기, 공유 링크 왕복, 붙여넣은 로그 왕복, 앞 판의 자동 저장, 이름이 바뀐 타입과 상한을 넘는 옛 계획의 알림, LV 범위 줄이 있는 1440 × 900 페이지 높이, 깨끗한 콘솔 등 22가지(아래) |
+| `node tests/web-smoke.js` | **화면 연기 시험(선택, Playwright).** 시작, 진짜 키·클릭 뒤 화면의 숫자 = `OresimUI.engine().view()`, 새로 고침 뒤 되살리기, 공유 링크 왕복, 붙여넣은 로그 왕복, 앞 판의 자동 저장, 이름이 바뀐 타입과 상한을 넘는 옛 계획의 알림, LV 범위 줄이 있는 1440 × 900 페이지 높이, 붙여넣은 로그 안내가 고치는 동안 남는지와 좁은 화면에서 보이는지, 깨끗한 콘솔 등 25가지(아래) |
 | `node tests/web-diff.js [seeds=20] [steps=150] [firstSeed=1]` | **화면 차등 시험(선택, Playwright).** 화면을 진짜 입력으로만 움직이고 같은 입력을 원본(하네스)에 넣어, 조작마다 화면이 보여 주는 글자가 원본 상태와 같은지 본다(아래) |
 
 걸리는 시간(이 작업 환경에서 잰 값): `gen-web-const --check`·`const-check`·`as3-semantics` 각 1초 안, `engine-diff` 기본값 약 100초
@@ -79,7 +79,7 @@ NODE_PATH="$(npm root -g)" node tests/web-diff.js 2 60
 
 ### `web-smoke.js`
 
-`web/` 을 작은 http 서버(127.0.0.1, 빈 포트)로 내보내고 Chromium 으로 연다. 22가지를 확인한다.
+`web/` 을 작은 http 서버(127.0.0.1, 빈 포트)로 내보내고 Chromium 으로 연다. 25가지를 확인한다.
 - 새 계획으로 시작하고 `window.OresimUI` 가 `render, dispatch, playSound, shareLink, engine` 인지
 - 진짜 키(L L L S S Shift+A ← →)와 클릭(레벨업, HACK +1, STAB 대시) 뒤 화면의 POINT, LV, HP/MP/SP, 스탯 값과 필요 포인트,
   대시 단추의 'N까지'(`previewDash`), 로그 표의 글(`exportLog()`)이 엔진과 같은지
@@ -98,6 +98,9 @@ NODE_PATH="$(npm root -g)" node tests/web-diff.js 2 60
   그 공유 링크가 새 브라우저에서 묻지 않고 상한으로 열리고(LV 255, 스탯 255 이하, 주소의 `#` 는 지운다) 'LV나 스탯이 상한(255)을 넘어 상한에 맞춰
   읽었습니다.'라고 알리는지, 앞 판의 자동 저장이 상한으로 다시 만들어져 그렇게 알리고 곧 `ENGINE_VERSION` '3' 과 `Status` LV 255 로 다시 저장되는지
 - 1440 × 900 에서 LV 범위 줄이 있는 계획의 로그 탭과 가이드 탭 모두 문서 높이가 900 그대로인지(로그 표·가이드 안 화면 낭독기용 글이 그 칸을 기준으로 자리 잡는다)
+- 붙여넣은 로그의 안내(2026-11-04 사용자 결정): 타입 이름을 알아보지 못한 옛 로그를 불러온 뒤 칸의 글을 고쳐도 그 안내(고치는 법 문장까지)가 남고
+  지우기로 사라지는지, 견줄 것으로 캐릭터/타입 줄이 없는 로그의 안내는 전처럼 고치면 지워지는지. 390 × 844 와 1024 × 768 에서 페이지 맨 위에 있을 때
+  `P` 로 불러오면 안내가 위의 상단 바와 아래쪽 고정 바 사이에 보이게 스크롤되는지(셋 모두 고치기 전의 `app.js` 에서는 실패한다)
 - 콘솔에 오류·경고가 없는지
 
 공유 링크 왕복에서 알려진 예외 하나: 조작 0회인 계획(처음까지 되돌린 계획 등)의 로그 첫머리 `Bonus` 줄은 원본이 기록 맨 앞 칸에 덧쓴 값이라

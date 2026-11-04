@@ -1549,20 +1549,34 @@
   pasteText.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) { e.preventDefault(); requestLoad(loadBtn); }
   });
+  // 안내를 바꾼다. 새 안내는 언제나 앞 안내의 '고치는 동안 남김'(keep)도 지운다
   function say(tone, words) {
     loadMsg.dataset.tone = tone || '';
+    delete loadMsg.dataset.keep;
     loadMsg.classList.remove('is-new');
     if (!words) { put(loadMsg); return; }
     put(loadMsg, icon(tone === 'error' ? ICON.alert : tone === 'ok' ? ICON.check : ICON.info), h('span', null, ...[].concat(words)));
     void loadMsg.offsetWidth;
     loadMsg.classList.add('is-new');
   }
-  // 일본어판에서 만든 로그는 이름이 달라 제대로 읽히지 않는다(오류는 나지 않고 결과가 달라진다): 미리 알린다
+  // 1180px 아래에서는 붙여넣은 로그 칸이 로그 표나 가이드 밑에 있어, 불러온 뒤의 안내가 화면 밖이나 아래쪽 고정 바 밑에 놓이기 쉽다:
+  // 불러오기를 누른 뒤에는 안내가 보이게 스크롤한다(사용자가 2026-11-04에 정했다). 위·아래 고정 바는 html 의 scroll-padding 이 비켜 준다.
+  // 가이드 탭이 보이면 가이드를 조금 뒤에 다시 지어 칸이 밀릴 수 있으므로 그 뒤에 한 번 더 본다('nearest'라 이미 보이면 움직이지 않는다)
+  const narrowLayout = matchMedia('(max-width: 1179px)');
+  function revealLoadMsg() {
+    if (!narrowLayout.matches) return;
+    const go = () => { if (loadMsg.firstChild) loadMsg.scrollIntoView({ block: 'nearest', behavior: reduceMotion() ? 'auto' : 'smooth' }); };
+    requestAnimationFrame(go);
+    setTimeout(go, 250);
+  }
+  // 일본어판에서 만든 로그는 이름이 달라 제대로 읽히지 않는다(오류는 나지 않고 결과가 달라진다): 미리 알린다.
+  // 칸의 글을 고치면 지난 안내(info, error)는 지운다. 다만 글을 칸에 남긴 불러오기의 타입·상한 안내(keep: 타입 이름을 알아보지 못했거나,
+  // 처음부터 다시 읽으며 상한에 맞췄을 때)는 그 글을 고치는 동안 남긴다(사용자가 2026-11-04에 정했다). 칸을 다 비우면 지운다
   const looksJapanese = (t) => /[\u3040-\u30FF\uFF66-\uFF9F]/.test(t);
   function noteText() {
     const t = pasteText.value;
     if (looksJapanese(t)) say('info', `일본어판에서 만든 로그로 보입니다. 캐릭터${WJ}·${WJ}계열 이름이 달라, 불러오면 지금 고른 캐릭터로 다시 계산되어 결과가 달라집니다.`);
-    else if (loadMsg.dataset.tone === 'info' || loadMsg.dataset.tone === 'error') say('', '');
+    else if ((loadMsg.dataset.tone === 'info' || loadMsg.dataset.tone === 'error') && (!loadMsg.dataset.keep || !t.trim())) say('', '');
   }
   pasteText.addEventListener('input', () => { if (pasteText.value.trim()) openLoader(); noteText(); });
   // 글이 칸에 들어왔다: 칸을 열고, 초점은 로그 불러오기로(Enter나 P로 바로 불러온다)
@@ -1608,6 +1622,7 @@
       openLoader();                                                      // 붙여넣을 자리를 보여 준다(초점은 옮기지 않는다)
       say('error', '붙여넣은 로그가 없습니다. 재분배 로그를 먼저 붙여넣으세요.');
       pressFlash(loadBtn);
+      revealLoadMsg();
       return;
     }
     let cand, cv;
@@ -1615,6 +1630,7 @@
     if (!cand.r.ok) {
       say('error', '이 글에서 읽을 수 있는 재분배 로그 줄을 찾지 못했습니다. "LV 숫자 :" 줄이나 Status 줄이 들어 있는지 확인하세요.');
       pressFlash(loadBtn);
+      revealLoadMsg();
       return;
     }
     const r = cand.r;
@@ -1647,11 +1663,14 @@
     else if (r.restarted) say('info', [charType(), ' 줄이 없어 지금 고른 ', planName(cv.charName, cv.typeName), `${ro(cv.typeName)} 처음부터 읽었습니다.${over}`, looksJapanese(text) ? ` ${JA_AFTER}` : '']);
     else if (typeLost(r)) say('info', ['로그를 불러왔습니다: ', ...who, `. ${firstTypeWords(cv.typeName, true)}${over} `, ...fixTypeWords()]);
     else say(over ? 'info' : 'ok', ['로그를 불러왔습니다: ', ...who, `.${over}`]);
+    // 글을 칸에 남기는 타입·상한 안내는 그 글을 고치는 동안 남긴다(noteText)
+    if (!r.error && (typeLost(r) || (r.restarted && over))) loadMsg.dataset.keep = '1';
     if (r.footer && !r.error && !typeLost(r)) {
       if (document.activeElement === pasteText) loadBtn.focus();       // 칸이 접혀도 초점이 <body>로 떨어지지 않게
       pasteText.value = '';
       foldLoader();
     }
+    revealLoadMsg();
   }
   loadBtn.addEventListener('click', (e) => requestLoad(e.currentTarget));
 
